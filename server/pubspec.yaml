@@ -1,0 +1,10 @@
+name: server_scripts
+description: Helper scripts for app generation and automation.
+version: 1.0.0
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  yaml: ^3.1.1
+  path: ^1.8.0 

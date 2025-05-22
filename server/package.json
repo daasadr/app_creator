@@ -1,0 +1,23 @@
+{
+  "name": "app-generator-server",
+  "version": "1.0.0",
+  "description": "Local backend server for generating Flutter applications",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "nodemon src/index.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "cors": "^2.8.5",
+    "body-parser": "^1.20.2",
+    "multer": "^1.4.5-lts.1",
+    "fluent-ffmpeg": "^2.1.2",
+    "archiver": "^6.0.1",
+    "fs-extra": "^11.2.0",
+    "uuid": "^9.0.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.3"
+  }
+} 

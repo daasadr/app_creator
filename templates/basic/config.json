@@ -1,0 +1,33 @@
+{
+  "name": "Basic Template",
+  "version": "1.0.0",
+  "description": "A basic template for mobile applications",
+  "features": {
+    "navigation": true,
+    "notifications": true,
+    "search": true,
+    "profile": true,
+    "gps": false,
+    "camera": false,
+    "social_sharing": false
+  },
+  "customization": {
+    "colors": {
+      "primary": "#007AFF",
+      "secondary": "#5856D6",
+      "background": "#FFFFFF",
+      "text": "#000000"
+    },
+    "fonts": {
+      "heading": "System",
+      "body": "System"
+    },
+    "icons": {
+      "style": "material"
+    }
+  },
+  "required_permissions": [
+    "INTERNET",
+    "ACCESS_NETWORK_STATE"
+  ]
+} 
