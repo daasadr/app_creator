@@ -162,7 +162,7 @@ class WebViewPage extends StatelessWidget {
     if (hiddenSelectors.isNotEmpty) {
       final js = hiddenSelectors
           .map((sel) =>
-              "document.querySelectorAll('\\${sel}').forEach(e=>e.style.display='none');")
+              "document.querySelectorAll('\\$sel').forEach(e=>e.style.display='none');")
           .join('\n');
       controller.runJavaScript(
           "window.addEventListener('DOMContentLoaded', function() { $js });");
