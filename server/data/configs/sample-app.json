@@ -1,0 +1,77 @@
+{
+  "name": "sample-app",
+  "appName": "Sample App",
+  "packageName": "com.example.sampleapp",
+  "templateId": "default",
+  "version": "1.0.0",
+  "theme": {
+    "primaryColor": "0xFF2196F3",
+    "secondaryColor": "0xFF4CAF50",
+    "textColor": "0xFF000000",
+    "backgroundColor": "0xFFFFFFFF"
+  },
+  "pages": [
+    {
+      "type": "list",
+      "title": "News Feed",
+      "items": [
+        {
+          "title": "First News Item",
+          "description": "This is the first news item in our feed",
+          "imageUrl": "https://picsum.photos/200"
+        },
+        {
+          "title": "Second News Item",
+          "description": "This is the second news item in our feed",
+          "imageUrl": "https://picsum.photos/200"
+        }
+      ]
+    },
+    {
+      "type": "grid",
+      "title": "Photo Gallery",
+      "columns": 2,
+      "items": [
+        {
+          "title": "Photo 1",
+          "imageUrl": "https://picsum.photos/200",
+          "description": "Beautiful landscape"
+        },
+        {
+          "title": "Photo 2",
+          "imageUrl": "https://picsum.photos/200",
+          "description": "City view"
+        }
+      ]
+    },
+    {
+      "type": "detail",
+      "title": "About Us",
+      "content": {
+        "title": "Welcome to Sample App",
+        "description": "This is a sample application generated from our template system.",
+        "imageUrl": "https://picsum.photos/400/200"
+      }
+    }
+  ],
+  "navigation": {
+    "type": "bottom_tabs",
+    "items": [
+      {
+        "title": "News",
+        "icon": "news",
+        "pageIndex": 0
+      },
+      {
+        "title": "Gallery",
+        "icon": "photo",
+        "pageIndex": 1
+      },
+      {
+        "title": "About",
+        "icon": "info",
+        "pageIndex": 2
+      }
+    ]
+  }
+} 

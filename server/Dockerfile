@@ -1,8 +1,19 @@
-FROM ghcr.io/cirruslabs/flutter:3.19.6
+FROM node:18-slim
 
 WORKDIR /app
 
-# (Volitelně) Otevřete port, pokud budete spouštět server (např. 3001)
-EXPOSE 3001
+# Install dependencies
+COPY server/package*.json ./
+RUN npm install
 
-CMD [ "bash" ] 
+# Copy application files
+COPY server .
+
+# Create necessary directories
+RUN mkdir -p data/templates data/configs builds
+
+# Expose API port
+EXPOSE 3002
+
+# Start the application
+CMD ["node", "index.js"] 

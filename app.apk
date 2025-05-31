@@ -1,0 +1,10 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Error</title>
+</head>
+<body>
+<pre>Cannot GET /api/download/db645d9f-49e0-4c88-8506-21fcf1620ed5/app-release.apk</pre>
+</body>
+</html>

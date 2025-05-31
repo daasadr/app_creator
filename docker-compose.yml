@@ -1,0 +1,31 @@
+version: '3.8'
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    ports:
+      - "3002:3002"
+    volumes:
+      - ./server:/app
+      - app_data:/app/data
+      - app_builds:/app/builds
+    environment:
+      - PORT=3002
+      - NODE_ENV=production
+    command: node index.js
+
+  builder:
+    build:
+      context: .
+      dockerfile: server/Dockerfile.builder
+    volumes:
+      - app_builds:/app/builds
+    environment:
+      - ANDROID_SDK_ROOT=/android-sdk
+    command: tail -f /dev/null  # Keep container running
+
+volumes:
+  app_data:  # Persistent storage for templates and configs
+  app_builds:  # Shared volume for builds 

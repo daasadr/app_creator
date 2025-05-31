@@ -29,5 +29,12 @@
     "typescript": "^5.3.3",
     "eslint": "^8.56.0",
     "eslint-config-next": "14.1.0"
-  }
-} 
+  },
+  "description": "A web-based platform for generating mobile applications for Android and iOS platforms.",
+  "main": "index.js",
+  "directories": {
+    "test": "test"
+  },
+  "author": "",
+  "license": "ISC"
+}

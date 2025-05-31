@@ -1,0 +1,69 @@
+{
+  "name": "default",
+  "description": "Default template with basic features",
+  "version": "1.0.0",
+  "components": {
+    "pages": [
+      {
+        "type": "list",
+        "name": "List Page",
+        "description": "A page displaying items in a list format",
+        "configurable": {
+          "title": "string",
+          "items": "array"
+        }
+      },
+      {
+        "type": "grid",
+        "name": "Grid Page",
+        "description": "A page displaying items in a grid layout",
+        "configurable": {
+          "title": "string",
+          "columns": "number",
+          "items": "array"
+        }
+      },
+      {
+        "type": "detail",
+        "name": "Detail Page",
+        "description": "A page showing detailed information",
+        "configurable": {
+          "title": "string",
+          "content": "object"
+        }
+      }
+    ],
+    "widgets": [
+      {
+        "type": "text",
+        "name": "Text Widget",
+        "configurable": {
+          "text": "string",
+          "style": "object"
+        }
+      },
+      {
+        "type": "image",
+        "name": "Image Widget",
+        "configurable": {
+          "url": "string",
+          "size": "object"
+        }
+      },
+      {
+        "type": "button",
+        "name": "Button Widget",
+        "configurable": {
+          "text": "string",
+          "action": "string"
+        }
+      }
+    ]
+  },
+  "defaultTheme": {
+    "primaryColor": "0xFF2196F3",
+    "secondaryColor": "0xFF4CAF50",
+    "textColor": "0xFF000000",
+    "backgroundColor": "0xFFFFFFFF"
+  }
+} 
