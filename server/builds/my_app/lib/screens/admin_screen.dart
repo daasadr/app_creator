@@ -3,6 +3,9 @@ import 'package:get/get.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:image_picker/image_picker.dart';
+import 'dart:io';
 
 const String appId = 'demoApp'; // TODO: nahradit dynamicky
 
@@ -16,6 +19,8 @@ class AdminScreen extends StatefulWidget {
 class _AdminScreenState extends State<AdminScreen> {
   final FirebaseMessaging _messaging = FirebaseMessaging.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final FirebaseStorage _storage = FirebaseStorage.instance;
+  final ImagePicker _picker = ImagePicker();
   final TextEditingController _notificationTitleController =
       TextEditingController();
   final TextEditingController _notificationBodyController =
@@ -26,6 +31,8 @@ class _AdminScreenState extends State<AdminScreen> {
   final TextEditingController _hiddenSelectorsController =
       TextEditingController();
   String _newPageType = 'content';
+  String? _selectedImageUrl;
+  File? _selectedImageFile;
 
   @override
   void initState() {
@@ -78,13 +85,53 @@ class _AdminScreenState extends State<AdminScreen> {
     }
   }
 
+  Future<void> _pickImage() async {
+    try {
+      final XFile? image = await _picker.pickImage(source: ImageSource.gallery);
+      if (image != null) {
+        setState(() {
+          _selectedImageFile = File(image.path);
+        });
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error picking image: $e')),
+      );
+    }
+  }
+
+  Future<String?> _uploadImage() async {
+    if (_selectedImageFile == null) return null;
+
+    try {
+      final ref = _storage
+          .ref()
+          .child('images/${DateTime.now().millisecondsSinceEpoch}.jpg');
+      await ref.putFile(_selectedImageFile!);
+      return await ref.getDownloadURL();
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error uploading image: $e')),
+      );
+      return null;
+    }
+  }
+
   Future<void> _addOrUpdatePage({String? pageId}) async {
     final isWebView = _newPageType == 'webview';
+
+    // Upload image if selected
+    String? imageUrl;
+    if (_selectedImageFile != null) {
+      imageUrl = await _uploadImage();
+    }
+
     final data = {
       'title': _pageTitleController.text,
       'type': _newPageType,
       'content': isWebView ? null : _pageContentController.text,
       'url': isWebView ? _webviewUrlController.text : null,
+      'imageUrl': imageUrl,
       'hiddenSelectors': isWebView && _hiddenSelectorsController.text.isNotEmpty
           ? _hiddenSelectorsController.text
               .split(',')
@@ -127,7 +174,10 @@ class _AdminScreenState extends State<AdminScreen> {
     _pageContentController.clear();
     _webviewUrlController.clear();
     _hiddenSelectorsController.clear();
-    setState(() {});
+    setState(() {
+      _selectedImageFile = null;
+      _selectedImageUrl = null;
+    });
   }
 
   Future<void> _deletePage(String pageId) async {
@@ -152,7 +202,9 @@ class _AdminScreenState extends State<AdminScreen> {
     if (oldIndex < 0 ||
         oldIndex >= menu.length ||
         newIndex < 0 ||
-        newIndex >= menu.length) return;
+        newIndex >= menu.length) {
+      return;
+    }
     final item = menu.removeAt(oldIndex);
     menu.insert(newIndex, item);
     await appDoc.update({'menu': menu});
@@ -165,6 +217,7 @@ class _AdminScreenState extends State<AdminScreen> {
       _newPageType = pageData['type'] ?? 'content';
       _pageContentController.text = pageData['content'] ?? '';
       _webviewUrlController.text = pageData['url'] ?? '';
+      _selectedImageUrl = pageData['imageUrl'];
       _hiddenSelectorsController.text =
           (pageData['hiddenSelectors'] ?? []).join(', ');
     } else {
@@ -172,6 +225,8 @@ class _AdminScreenState extends State<AdminScreen> {
       _newPageType = 'content';
       _pageContentController.clear();
       _webviewUrlController.clear();
+      _selectedImageUrl = null;
+      _selectedImageFile = null;
       _hiddenSelectorsController.clear();
     }
     showDialog(
@@ -198,13 +253,40 @@ class _AdminScreenState extends State<AdminScreen> {
                         value: 'webview', child: Text('WebView stránka')),
                   ],
                   onChanged: (val) {
-                    setState(() {
-                      _newPageType = val ?? 'content';
-                    });
-                    setStateDialog(() {});
+                    if (val != null) {
+                      setStateDialog(() {
+                        _newPageType = val;
+                      });
+                    }
                   },
                 ),
-                if (_newPageType == 'content')
+                if (_newPageType == 'content') ...[
+                  const SizedBox(height: 16),
+                  ElevatedButton.icon(
+                    onPressed: () async {
+                      await _pickImage();
+                      setStateDialog(() {});
+                    },
+                    icon: const Icon(Icons.image),
+                    label: const Text('Vybrat obrázek'),
+                  ),
+                  if (_selectedImageFile != null ||
+                      _selectedImageUrl != null) ...[
+                    const SizedBox(height: 8),
+                    Container(
+                      height: 200,
+                      width: double.infinity,
+                      decoration: BoxDecoration(
+                        border: Border.all(color: Colors.grey),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: _selectedImageFile != null
+                          ? Image.file(_selectedImageFile!, fit: BoxFit.cover)
+                          : Image.network(_selectedImageUrl!,
+                              fit: BoxFit.cover),
+                    ),
+                  ],
+                  const SizedBox(height: 16),
                   TextField(
                     controller: _pageContentController,
                     decoration:
@@ -212,6 +294,7 @@ class _AdminScreenState extends State<AdminScreen> {
                     maxLines: 5,
                     onChanged: (_) => setStateDialog(() {}),
                   ),
+                ],
                 if (_newPageType == 'webview') ...[
                   TextField(
                     controller: _webviewUrlController,
@@ -227,7 +310,7 @@ class _AdminScreenState extends State<AdminScreen> {
                   ),
                   // Základ pro kapátko (budoucí rozšíření)
                   const SizedBox(height: 8),
-                  Text('Základ pro kapátko: Zadejte CSS selektory ručně.'),
+                  const Text('Základ pro kapátko: Zadejte CSS selektory ručně.'),
                 ],
                 const SizedBox(height: 16),
                 // Náhled stránky
@@ -269,7 +352,7 @@ class _AdminScreenState extends State<AdminScreen> {
                           if (selectors.isNotEmpty) {
                             final js = selectors
                                 .map((sel) =>
-                                    "document.querySelectorAll('\\${sel}').forEach(e=>e.style.display='none');")
+                                    "document.querySelectorAll('\\$sel').forEach(e=>e.style.display='none');")
                                 .join('\n');
                             controller.runJavaScript(
                                 "window.addEventListener('DOMContentLoaded', function() { $js });");

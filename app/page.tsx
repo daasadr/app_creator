@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import {
   Box,
   Container,
@@ -27,19 +27,11 @@ import {
   Select,
 } from '@chakra-ui/react'
 import { collection, getDocs, addDoc, doc, getDoc, setDoc, updateDoc, deleteDoc, getFirestore, onSnapshot } from 'firebase/firestore'
-import { initializeApp } from 'firebase/app'
+import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage'
 
-// Firebase config (TODO: použijte skutečné hodnoty)
-const firebaseConfig = {
-  apiKey: 'YOUR-API-KEY',
-  authDomain: 'YOUR-AUTH-DOMAIN',
-  projectId: 'YOUR-PROJECT-ID',
-  storageBucket: 'YOUR-STORAGE-BUCKET',
-  messagingSenderId: 'YOUR-SENDER-ID',
-  appId: 'YOUR-APP-ID',
-}
-const app = initializeApp(firebaseConfig)
-const db = getFirestore(app)
+let firebaseApp: any = null
+let db: any = null
+let storage: any = null
 
 export default function Home() {
   const { isOpen, onOpen, onClose } = useDisclosure()
@@ -58,10 +50,36 @@ export default function Home() {
   const [isPageEditorOpen, setIsPageEditorOpen] = useState(false)
   const [simPageIdx, setSimPageIdx] = useState(0)
   const [pickerActive, setPickerActive] = useState(false)
+  const [imageFile, setImageFile] = useState<File | null>(null)
+  const [imagePreview, setImagePreview] = useState<string | null>(null)
+  const [uploadingImage, setUploadingImage] = useState(false)
+  const firebaseInitialized = useRef(false)
+
+  useEffect(() => {
+    if (!firebaseInitialized.current && typeof window !== 'undefined') {
+      import('firebase/app').then(({ initializeApp }) => {
+        firebaseApp = initializeApp({
+          apiKey: 'YOUR-API-KEY',
+          authDomain: 'YOUR-AUTH-DOMAIN',
+          projectId: 'YOUR-PROJECT-ID',
+          storageBucket: 'YOUR-STORAGE-BUCKET',
+          messagingSenderId: 'YOUR-SENDER-ID',
+          appId: 'YOUR-APP-ID',
+        })
+        import('firebase/firestore').then(({ getFirestore }) => {
+          db = getFirestore(firebaseApp)
+        })
+        import('firebase/storage').then(({ getStorage }) => {
+          storage = getStorage(firebaseApp)
+        })
+      })
+      firebaseInitialized.current = true
+    }
+  }, [])
 
   // Načti seznam aplikací (instancí)
   useEffect(() => {
-    if (role === 'superadmin') {
+    if (role === 'superadmin' && db) {
       const unsub = onSnapshot(collection(db, 'apps'), (snapshot) => {
         setInstances(snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })))
       })
@@ -88,6 +106,10 @@ export default function Home() {
   // Ulož novou nebo upravenou aplikaci
   const handleSaveInstance = async () => {
     if (!appName) return
+    if (!db) {
+      alert('Firebase ještě není inicializováno. Zkuste to za chvíli.')
+      return
+    }
     if (editingInstance) {
       // update
       await updateDoc(doc(db, 'apps', editingInstance.id), {
@@ -163,14 +185,34 @@ export default function Home() {
     setIsPageEditorOpen(true)
   }
 
-  // Ulož změny stránky
-  const handleSavePageEdit = () => {
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      setImageFile(e.target.files[0])
+      setImagePreview(URL.createObjectURL(e.target.files[0]))
+    }
+  }
+
+  const handleSavePageEdit = async () => {
+    let imageUrl = pageEdit?.imageUrl || null
+    if (imageFile) {
+      if (!storage) {
+        alert('Firebase ještě není inicializováno. Zkuste to za chvíli.')
+        return
+      }
+      setUploadingImage(true)
+      const fileRef = storageRef(storage, 'images/' + imageFile.name + '-' + Date.now())
+      await uploadBytes(fileRef, imageFile)
+      imageUrl = await getDownloadURL(fileRef)
+      setUploadingImage(false)
+    }
     if (editingPageIdx !== null && pageEdit) {
       const newPages = [...pages]
-      newPages[editingPageIdx] = { ...pageEdit }
+      newPages[editingPageIdx] = { ...pageEdit, imageUrl }
       setPages(newPages)
     }
     setIsPageEditorOpen(false)
+    setImageFile(null)
+    setImagePreview(null)
   }
 
   // Funkce pro injektování JS do iframe
@@ -419,10 +461,26 @@ export default function Home() {
                   </Select>
                 </FormControl>
                 {pageEdit?.type === 'content' && (
-                  <FormControl>
-                    <FormLabel>Obsah stránky</FormLabel>
-                    <Textarea value={pageEdit?.content || ''} onChange={e => setPageEdit({ ...pageEdit, content: e.target.value })} />
-                  </FormControl>
+                  <>
+                    <FormControl>
+                      <FormLabel>Obrázek stránky</FormLabel>
+                      <Input type="file" accept="image/*" onChange={handleImageChange} />
+                      {(imagePreview || pageEdit?.imageUrl) && (
+                        <Box mt={2}>
+                          <img
+                            src={imagePreview || pageEdit?.imageUrl}
+                            alt="Náhled obrázku"
+                            style={{ maxWidth: '100%', maxHeight: 200, borderRadius: 8, border: '1px solid #ccc' }}
+                          />
+                        </Box>
+                      )}
+                      {uploadingImage && <Text color="blue.500">Nahrávám obrázek...</Text>}
+                    </FormControl>
+                    <FormControl>
+                      <FormLabel>Obsah stránky</FormLabel>
+                      <Textarea value={pageEdit?.content || ''} onChange={e => setPageEdit({ ...pageEdit, content: e.target.value })} />
+                    </FormControl>
+                  </>
                 )}
                 {pageEdit?.type === 'webview' && (
                   <>
