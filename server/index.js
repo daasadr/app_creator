@@ -2,10 +2,10 @@ const express = require('express');
 const cors = require('cors');
 const path = require('path');
 const fs = require('fs-extra');
-const AppGenerator = require('./scripts/generate_app');
+const { generateApp } = require('./generate_flutter_app');
 
 const app = express();
-const port = process.env.PORT || 3002;
+const port = process.env.PORT || 3001;
 
 // Middleware
 app.use(cors());
@@ -21,12 +21,6 @@ const BUILDS_DIR = path.join(__dirname, 'builds');
 fs.ensureDirSync(TEMPLATES_DIR);
 fs.ensureDirSync(CONFIGS_DIR);
 fs.ensureDirSync(BUILDS_DIR);
-
-// Initialize generator
-const generator = new AppGenerator(
-  path.join(__dirname, 'templates', 'flutter_basic'),
-  BUILDS_DIR
-);
 
 // API Endpoints
 
@@ -138,66 +132,90 @@ app.delete('/api/configs/:id', async (req, res) => {
   }
 });
 
-// Download APK
-app.get('/api/download/:buildId/app-release.apk', async (req, res) => {
+// Generate app from configuration
+app.post('/api/generate', async (req, res) => {
   try {
-    const { buildId } = req.params;
-    const apkPath = path.join(BUILDS_DIR, buildId, 'build', 'app', 'outputs', 'flutter-apk', 'app-release.apk');
-    
-    if (!fs.existsSync(apkPath)) {
-      return res.status(404).json({
+    const config = req.body;
+    console.log('Received config:', JSON.stringify(config, null, 2));
+
+    // Validace vstupních dat
+    if (!config.appName) {
+      return res.status(400).json({
         success: false,
-        error: 'APK file not found'
+        error: 'Název aplikace je povinný'
       });
     }
 
-    res.download(apkPath);
+    if (!config.pages || !Array.isArray(config.pages) || config.pages.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'Aplikace musí obsahovat alespoň jednu stránku'
+      });
+    }
+
+    if (!config.settings) {
+      return res.status(400).json({
+        success: false,
+        error: 'Nastavení aplikace je povinné'
+      });
+    }
+
+    console.log('Generating app with config:', {
+      appName: config.appName,
+      pagesCount: config.pages.length,
+      settings: config.settings
+    });
+
+    const result = await generateApp(config);
+    
+    if (!result.success) {
+      console.error('App generation failed:', result.error);
+      return res.status(500).json({
+        success: false,
+        error: result.error,
+        details: result.details
+      });
+    }
+
+    console.log('App generated successfully:', {
+      buildId: result.buildId,
+      path: result.buildPath
+    });
+
+    res.json({
+      success: true,
+      downloadUrl: `/downloads/${path.basename(result.buildPath)}`,
+      buildId: result.buildId
+    });
   } catch (error) {
-    console.error('Error downloading APK:', error);
+    console.error('Error in /api/generate:', error);
     res.status(500).json({
       success: false,
-      error: error.message
+      error: error.message,
+      details: error.stack
     });
   }
 });
 
-// Generate app from configuration
-app.post('/api/generate', async (req, res) => {
-  try {
-    const { configId } = req.body;
-    
-    // Load configuration
-    const configPath = path.join(CONFIGS_DIR, `${configId}.json`);
-    const config = await fs.readJson(configPath);
-    
-    // Generate the app
-    const result = await generator.generateApp(config);
-
-    if (!result.success) {
-      return res.status(500).json({
-        success: false,
-        error: result.error
-      });
-    }
-
-    // Create download URL
-    const apkFileName = path.basename(result.apkPath);
-    const downloadUrl = `/api/download/${result.buildId}/app-release.apk`;
-
-    res.json({
-      success: true,
-      buildId: result.buildId,
-      downloadUrl,
-      appName: config.appName
-    });
-
-  } catch (error) {
-    console.error('Error generating app:', error);
-    res.status(500).json({
+// Endpoint pro stahování vygenerované aplikace
+app.get('/api/download/:appName', (req, res) => {
+  const { appName } = req.params;
+  const zipPath = path.join(__dirname, 'builds', `${appName}.zip`);
+  
+  if (!fs.existsSync(zipPath)) {
+    return res.status(404).json({
       success: false,
-      error: error.message
+      error: 'Aplikace nebyla nalezena'
     });
   }
+  
+  res.download(zipPath, `${appName}.zip`, (err) => {
+    if (err) {
+      console.error('Error downloading file:', err);
+    }
+    // Smaž soubor po stažení
+    fs.unlink(zipPath).catch(console.error);
+  });
 });
 
 // Get build status
@@ -249,5 +267,5 @@ app.delete('/api/builds/:buildId', async (req, res) => {
 
 // Start server
 app.listen(port, () => {
-  console.log(`App generator server running on port ${port}`);
+  console.log(`Server běží na portu ${port}`);
 }); 

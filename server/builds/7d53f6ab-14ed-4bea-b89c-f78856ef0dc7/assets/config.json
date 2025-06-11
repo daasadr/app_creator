@@ -1,0 +1,30 @@
+{
+  "appName": "dsfsdf",
+  "appDescription": "sdgfsdgsdg",
+  "pages": [
+    {
+      "title": "sdfdsfdsf",
+      "type": "webview",
+      "url": "https://video-zbrojak.cz",
+      "content": "",
+      "hiddenSelectors": [],
+      "imageUrl": ""
+    },
+    {
+      "title": "ggsfgfs",
+      "type": "content",
+      "content": "gsrrgrdshdgfdgfh",
+      "hiddenSelectors": [],
+      "imageUrl": ""
+    },
+    {
+      "title": "dgrddg",
+      "type": "content",
+      "content": "rggregrg",
+      "hiddenSelectors": [],
+      "imageUrl": "https://firebasestorage.googleapis.com/v0/b/app-generator-dd106.firebasestorage.app/o/images%2F440746763_981495100169888_636738587175100468_n.jpg-1749136727794?alt=media&token=85512e03-dfcc-4abb-8f21-ada9fdc21b4e"
+    }
+  ],
+  "buildApk": true,
+  "buildAab": true
+}

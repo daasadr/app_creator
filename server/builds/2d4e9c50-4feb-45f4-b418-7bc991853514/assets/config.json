@@ -1,0 +1,53 @@
+{
+  "appName": "Sample App",
+  "theme": {
+    "primaryColor": "0xFF2196F3"
+  },
+  "pages": [
+    {
+      "title": "Home",
+      "type": "list",
+      "content": {
+        "items": [
+          {
+            "title": "First Item",
+            "description": "This is the first item in our list"
+          },
+          {
+            "title": "Second Item",
+            "description": "This is the second item in our list"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Gallery",
+      "type": "grid",
+      "content": {
+        "items": [
+          {
+            "title": "Image 1",
+            "imageUrl": "https://picsum.photos/200"
+          },
+          {
+            "title": "Image 2",
+            "imageUrl": "https://picsum.photos/200"
+          }
+        ]
+      }
+    },
+    {
+      "title": "About",
+      "type": "detail",
+      "content": {
+        "title": "About Us",
+        "description": "This is a sample app generated from our template.",
+        "imageUrl": "https://picsum.photos/400/200"
+      }
+    }
+  ],
+  "settings": {
+    "version": "1.0.0",
+    "apiEndpoint": "https://api.example.com"
+  }
+} 

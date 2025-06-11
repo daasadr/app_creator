@@ -33,11 +33,21 @@ let firebaseApp: any = null
 let db: any = null
 let storage: any = null
 
+// Typ stránky rozšířený o volitelné vlastnosti
+interface AppPage {
+  title: string;
+  type: 'content' | 'webview';
+  url?: string;
+  content?: string;
+  hiddenSelectors?: string[];
+  imageUrl?: string;
+}
+
 export default function Home() {
   const { isOpen, onOpen, onClose } = useDisclosure()
   const [appName, setAppName] = useState('')
   const [appDescription, setAppDescription] = useState('')
-  const [pages, setPages] = useState<Array<{ title: string; type: 'content' | 'webview'; url?: string }>>([])
+  const [pages, setPages] = useState<AppPage[]>([])
   const [isGenerating, setIsGenerating] = useState(false)
   const [buildApk, setBuildApk] = useState(true)
   const [buildAab, setBuildAab] = useState(true)
@@ -59,12 +69,12 @@ export default function Home() {
     if (!firebaseInitialized.current && typeof window !== 'undefined') {
       import('firebase/app').then(({ initializeApp }) => {
         firebaseApp = initializeApp({
-          apiKey: 'YOUR-API-KEY',
-          authDomain: 'YOUR-AUTH-DOMAIN',
-          projectId: 'YOUR-PROJECT-ID',
-          storageBucket: 'YOUR-STORAGE-BUCKET',
-          messagingSenderId: 'YOUR-SENDER-ID',
-          appId: 'YOUR-APP-ID',
+          apiKey: 'AIzaSyA8HKV6sei0vW7DkURvdmp_BXYXvnIqqc',
+          authDomain: 'app-generator-dd106.firebaseapp.com',
+          projectId: 'app-generator-dd106',
+          storageBucket: 'app-generator-dd106.firebasestorage.app',
+          messagingSenderId: '996188428571',
+          appId: '1:996188428571:web:5c3cfbeafd84c9f4119bbe',
         })
         import('firebase/firestore').then(({ getFirestore }) => {
           db = getFirestore(firebaseApp)
@@ -85,14 +95,21 @@ export default function Home() {
       })
       return () => unsub()
     }
-  }, [role])
+  }, [role, db])
 
   // Otevři editor pro novou nebo existující aplikaci
   const openEditor = (instance?: any) => {
     if (instance) {
       setAppName(instance.name || '')
       setAppDescription(instance.description || '')
-      setPages(instance.menu || [])
+      setPages((instance.menu || []).map((p: any) => ({
+        title: p.title,
+        type: p.type,
+        url: p.url,
+        content: p.content ?? '',
+        hiddenSelectors: p.hiddenSelectors ?? [],
+        imageUrl: p.imageUrl ?? '',
+      })))
       setEditingInstance(instance)
     } else {
       setAppName('')
@@ -148,30 +165,34 @@ export default function Home() {
         },
         body: JSON.stringify({
           appName,
-          appDescription,
+          packageName: `com.example.${appName.toLowerCase().replace(/\s+/g, '')}`,
+          version: '1.0.0',
           pages,
-          buildApk,
-          buildAab,
+          settings: {
+            description: appDescription,
+          },
         }),
       })
 
       const data = await response.json()
       if (data.success) {
-        // Automatically trigger download
+        // Automaticky stáhni APK
         const downloadResponse = await fetch(`http://localhost:3001${data.downloadUrl}`)
         const blob = await downloadResponse.blob()
         const url = window.URL.createObjectURL(blob)
         const a = document.createElement('a')
         a.href = url
-        a.download = 'app.zip'
+        a.download = `${appName.toLowerCase().replace(/\s+/g, '_')}.apk`
         document.body.appendChild(a)
         a.click()
         window.URL.revokeObjectURL(url)
         document.body.removeChild(a)
       } else {
+        alert('Chyba při generování: ' + (data.error || 'Neznámá chyba'))
         console.error('Generation failed:', data)
       }
     } catch (error) {
+      alert('Chyba při komunikaci se serverem: ' + (error instanceof Error ? error.message : error))
       console.error('Error generating app:', error)
     } finally {
       setIsGenerating(false)
@@ -305,131 +326,142 @@ export default function Home() {
                 <ModalHeader>{editingInstance ? 'Upravit aplikaci' : 'Vytvořit novou aplikaci'}</ModalHeader>
                 <ModalCloseButton />
                 <ModalBody pb={6}>
-                  <VStack spacing={4} align="stretch">
-                    <FormControl>
-                      <FormLabel>Název aplikace</FormLabel>
-                      <Input value={appName} onChange={(e) => setAppName(e.target.value)} placeholder="Zadejte název aplikace" />
-                    </FormControl>
-                    <FormControl>
-                      <FormLabel>Popis</FormLabel>
-                      <Textarea value={appDescription} onChange={(e) => setAppDescription(e.target.value)} placeholder="Popis aplikace" />
-                    </FormControl>
-                    <Box>
-                      <Heading size="sm" mb={2}>Menu / Stránky</Heading>
-                      <VStack align="stretch" spacing={2}>
-                        {pages.map((page, idx) => (
-                          <Box key={idx} p={2} borderWidth={1} borderRadius="md" bg="gray.50">
-                            <HStack>
-                              <Input value={page.title} onChange={e => handlePageChange(idx, 'title', e.target.value)} placeholder="Název stránky" />
-                              <Select value={page.type} onChange={e => handlePageChange(idx, 'type', e.target.value as any)} w="120px">
-                                <option value="content">Content</option>
-                                <option value="webview">WebView</option>
-                              </Select>
-                              <IconButton aria-label="Upravit" icon={<span>✏️</span>} onClick={() => openPageEditor(idx)} />
-                              <IconButton aria-label="Nahoru" icon={<span>↑</span>} isDisabled={idx === 0} onClick={() => {
-                                const newPages = [...pages];
-                                const [item] = newPages.splice(idx, 1);
-                                newPages.splice(idx - 1, 0, item);
-                                setPages(newPages);
-                              }} />
-                              <IconButton aria-label="Dolů" icon={<span>↓</span>} isDisabled={idx === pages.length - 1} onClick={() => {
-                                const newPages = [...pages];
-                                const [item] = newPages.splice(idx, 1);
-                                newPages.splice(idx + 1, 0, item);
-                                setPages(newPages);
-                              }} />
-                              <IconButton aria-label="Smazat" icon={<span>🗑️</span>} onClick={() => {
-                                setPages(pages.filter((_, i) => i !== idx));
-                              }} />
-                            </HStack>
-                            {/* Inline náhled stránky */}
-                            {page.type === 'content' && (
-                              <Box mt={2} p={2} bg="white" borderRadius="md">
-                                <Text color="gray.600">{page.content || <i>Žádný obsah</i>}</Text>
+                  <SimpleGrid columns={2} spacing={8} alignItems="flex-start">
+                    {/* Levý sloupec: editace */}
+                    <VStack spacing={4} align="stretch">
+                      <FormControl>
+                        <FormLabel>Název aplikace</FormLabel>
+                        <Input value={appName} onChange={(e) => setAppName(e.target.value)} placeholder="Zadejte název aplikace" />
+                      </FormControl>
+                      <FormControl>
+                        <FormLabel>Popis</FormLabel>
+                        <Textarea value={appDescription} onChange={(e) => setAppDescription(e.target.value)} placeholder="Popis aplikace" />
+                      </FormControl>
+                      <Box>
+                        <Heading size="sm" mb={2}>Menu / Stránky</Heading>
+                        <VStack align="stretch" spacing={2}>
+                          {pages.map((page, idx) => (
+                            <Box key={idx} p={2} borderWidth={1} borderRadius="md" bg="gray.50">
+                              <HStack>
+                                <Input value={page.title} onChange={e => handlePageChange(idx, 'title', e.target.value)} placeholder="Název stránky" />
+                                <Select value={page.type} onChange={e => handlePageChange(idx, 'type', e.target.value as any)} w="120px">
+                                  <option value="content">Content</option>
+                                  <option value="webview">WebView</option>
+                                </Select>
+                                <IconButton aria-label="Upravit" icon={<span>✏️</span>} onClick={() => openPageEditor(idx)} />
+                                <IconButton aria-label="Nahoru" icon={<span>↑</span>} isDisabled={idx === 0} onClick={() => {
+                                  const newPages = [...pages];
+                                  const [item] = newPages.splice(idx, 1);
+                                  newPages.splice(idx - 1, 0, item);
+                                  setPages(newPages);
+                                }} />
+                                <IconButton aria-label="Dolů" icon={<span>↓</span>} isDisabled={idx === pages.length - 1} onClick={() => {
+                                  const newPages = [...pages];
+                                  const [item] = newPages.splice(idx, 1);
+                                  newPages.splice(idx + 1, 0, item);
+                                  setPages(newPages);
+                                }} />
+                                <IconButton aria-label="Smazat" icon={<span>🗑️</span>} onClick={() => {
+                                  setPages(pages.filter((_, i) => i !== idx));
+                                }} />
+                              </HStack>
+                              {/* Inline náhled stránky */}
+                              {page.type === 'content' && (
+                                <Box mt={2} p={2} bg="white" borderRadius="md">
+                                  <Text color="gray.600">{page.content || <i>Žádný obsah</i>}</Text>
+                                </Box>
+                              )}
+                              {page.type === 'webview' && (
+                                <Box mt={2} p={2} bg="white" borderRadius="md">
+                                  <Text color="gray.600">URL: {page.url || <i>Žádná URL</i>}</Text>
+                                  <Text color="gray.600">Skryté elementy: {page.hiddenSelectors?.join(', ') || <i>Žádné</i>}</Text>
+                                </Box>
+                              )}
+                            </Box>
+                          ))}
+                          <Button onClick={handleAddPage} colorScheme="blue" variant="outline">
+                            Přidat stránku
+                          </Button>
+                        </VStack>
+                      </Box>
+                    </VStack>
+                    {/* Pravý sloupec: náhled a akční tlačítka */}
+                    <VStack spacing={4} align="stretch">
+                      {/* Náhled aplikace */}
+                      <Box mt={0} p={2} borderWidth={1} borderRadius="md" bg="gray.100">
+                        <Heading size="sm" mb={2}>Náhled aplikace (menu)</Heading>
+                        <HStack spacing={2}>
+                          {pages.map((page, idx) => (
+                            <Button key={idx} size="sm">{page.title}</Button>
+                          ))}
+                        </HStack>
+                      </Box>
+                      <Box mt={0}>
+                        <Heading size="sm" mb={2}>Náhled aplikace (mobilní simulátor)</Heading>
+                        <Box
+                          mx="auto"
+                          border="2px solid #333"
+                          borderRadius="32px"
+                          w="390px"
+                          h="800px"
+                          bg="white"
+                          position="relative"
+                          overflow="hidden"
+                          boxShadow="lg"
+                        >
+                          {/* Menu (dole) */}
+                          <Box position="absolute" bottom={0} left={0} w="100%" bg="gray.100" borderTop="1px solid #ccc" display="flex" justifyContent="space-around" p={2}>
+                            {pages.map((page, idx) => (
+                              <Button
+                                key={idx}
+                                size="sm"
+                                variant={simPageIdx === idx ? 'solid' : 'ghost'}
+                                colorScheme="blue"
+                                onClick={() => setSimPageIdx(idx)}
+                              >
+                                {page.title}
+                              </Button>
+                            ))}
+                          </Box>
+                          {/* Obsah stránky */}
+                          <Box p={4} pt={6} pb={16} h="100%" overflowY="auto">
+                            {pages[simPageIdx]?.type === 'content' && (
+                              <Box>
+                                <Heading size="md" mb={2}>{pages[simPageIdx]?.title}</Heading>
+                                <Text>{pages[simPageIdx]?.content || <i>Žádný obsah</i>}</Text>
                               </Box>
                             )}
-                            {page.type === 'webview' && (
-                              <Box mt={2} p={2} bg="white" borderRadius="md">
-                                <Text color="gray.600">URL: {page.url || <i>Žádná URL</i>}</Text>
-                                <Text color="gray.600">Skryté elementy: {page.hiddenSelectors?.join(', ') || <i>Žádné</i>}</Text>
+                            {pages[simPageIdx]?.type === 'webview' && pages[simPageIdx]?.url && (
+                              <Box h="600px" borderWidth={1} borderRadius="md" overflow="hidden">
+                                <iframe
+                                  src={pages[simPageIdx]?.url}
+                                  style={{ width: '100%', height: '100%', border: 'none' }}
+                                  title="WebView náhled"
+                                />
+                                <Text fontSize="xs" color="gray.500" mt={1}>
+                                  Skryté elementy budou aplikovány v mobilní aplikaci.
+                                </Text>
                               </Box>
                             )}
                           </Box>
-                        ))}
-                        <Button onClick={handleAddPage} colorScheme="blue" variant="outline">
-                          Přidat stránku
-                        </Button>
-                      </VStack>
-                    </Box>
-                    {/* Náhled aplikace */}
-                    <Box mt={4} p={2} borderWidth={1} borderRadius="md" bg="gray.100">
-                      <Heading size="sm" mb={2}>Náhled aplikace (menu)</Heading>
-                      <HStack spacing={2}>
-                        {pages.map((page, idx) => (
-                          <Button key={idx} size="sm">{page.title}</Button>
-                        ))}
-                      </HStack>
-                    </Box>
-                    <Box mt={8}>
-                      <Heading size="sm" mb={2}>Náhled aplikace (mobilní simulátor)</Heading>
-                      <Box
-                        mx="auto"
-                        border="2px solid #333"
-                        borderRadius="32px"
-                        w="390px"
-                        h="800px"
-                        bg="white"
-                        position="relative"
-                        overflow="hidden"
-                        boxShadow="lg"
-                      >
-                        {/* Menu (dole) */}
-                        <Box position="absolute" bottom={0} left={0} w="100%" bg="gray.100" borderTop="1px solid #ccc" display="flex" justifyContent="space-around" p={2}>
-                          {pages.map((page, idx) => (
-                            <Button
-                              key={idx}
-                              size="sm"
-                              variant={simPageIdx === idx ? 'solid' : 'ghost'}
-                              colorScheme="blue"
-                              onClick={() => setSimPageIdx(idx)}
-                            >
-                              {page.title}
-                            </Button>
-                          ))}
+                          {/* Horní lišta (imitace) */}
+                          <Box position="absolute" top={0} left={0} w="100%" h="32px" bg="gray.200" borderBottom="1px solid #ccc" borderTopRadius="32px" />
                         </Box>
-                        {/* Obsah stránky */}
-                        <Box p={4} pt={6} pb={16} h="100%" overflowY="auto">
-                          {pages[simPageIdx]?.type === 'content' && (
-                            <Box>
-                              <Heading size="md" mb={2}>{pages[simPageIdx]?.title}</Heading>
-                              <Text>{pages[simPageIdx]?.content || <i>Žádný obsah</i>}</Text>
-                            </Box>
-                          )}
-                          {pages[simPageIdx]?.type === 'webview' && pages[simPageIdx]?.url && (
-                            <Box h="600px" borderWidth={1} borderRadius="md" overflow="hidden">
-                              <iframe
-                                src={pages[simPageIdx]?.url}
-                                style={{ width: '100%', height: '100%', border: 'none' }}
-                                title="WebView náhled"
-                              />
-                              <Text fontSize="xs" color="gray.500" mt={1}>
-                                Skryté elementy budou aplikovány v mobilní aplikaci.
-                              </Text>
-                            </Box>
-                          )}
-                        </Box>
-                        {/* Horní lišta (imitace) */}
-                        <Box position="absolute" top={0} left={0} w="100%" h="32px" bg="gray.200" borderBottom="1px solid #ccc" borderTopRadius="32px" />
                       </Box>
-                    </Box>
-                  </VStack>
+                      <HStack justify="flex-end" mt={4}>
+                        <Button colorScheme="blue" onClick={handleSaveInstance}>
+                          Uložit
+                        </Button>
+                        <Button colorScheme="green" onClick={handleGenerate} isLoading={isGenerating}>
+                          Generovat
+                        </Button>
+                        <Button onClick={() => setIsEditorOpen(false)}>
+                          Zrušit
+                        </Button>
+                      </HStack>
+                    </VStack>
+                  </SimpleGrid>
                 </ModalBody>
-                <ModalFooter>
-                  <Button colorScheme="blue" mr={3} onClick={handleSaveInstance}>
-                    Uložit
-                  </Button>
-                  <Button onClick={() => setIsEditorOpen(false)}>Zrušit</Button>
-                </ModalFooter>
               </ModalContent>
             </Modal>
           </Box>
@@ -448,98 +480,162 @@ export default function Home() {
             <ModalHeader>Upravit stránku</ModalHeader>
             <ModalCloseButton />
             <ModalBody pb={6}>
-              <VStack spacing={4} align="stretch">
-                <FormControl>
-                  <FormLabel>Název stránky</FormLabel>
-                  <Input value={pageEdit?.title || ''} onChange={e => setPageEdit({ ...pageEdit, title: e.target.value })} />
-                </FormControl>
-                <FormControl>
-                  <FormLabel>Typ stránky</FormLabel>
-                  <Select value={pageEdit?.type || 'content'} onChange={e => setPageEdit({ ...pageEdit, type: e.target.value })}>
-                    <option value="content">Content</option>
-                    <option value="webview">WebView</option>
-                  </Select>
-                </FormControl>
-                {pageEdit?.type === 'content' && (
-                  <>
-                    <FormControl>
-                      <FormLabel>Obrázek stránky</FormLabel>
-                      <Input type="file" accept="image/*" onChange={handleImageChange} />
-                      {(imagePreview || pageEdit?.imageUrl) && (
-                        <Box mt={2}>
-                          <img
-                            src={imagePreview || pageEdit?.imageUrl}
-                            alt="Náhled obrázku"
-                            style={{ maxWidth: '100%', maxHeight: 200, borderRadius: 8, border: '1px solid #ccc' }}
+              <SimpleGrid
+                columns={{ base: 1, md: 2 }}
+                spacing={8}
+                alignItems="flex-start"
+                gridTemplateColumns={{ base: '1fr', md: '2fr 1fr' }}
+              >
+                {/* Levý sloupec: editace */}
+                <VStack spacing={4} align="stretch" minW={0}>
+                  <FormControl>
+                    <FormLabel>Název stránky</FormLabel>
+                    <Input value={pageEdit?.title || ''} onChange={e => setPageEdit({ ...pageEdit, title: e.target.value })} />
+                  </FormControl>
+                  <FormControl>
+                    <FormLabel>Typ stránky</FormLabel>
+                    <Select value={pageEdit?.type || 'content'} onChange={e => setPageEdit({ ...pageEdit, type: e.target.value })}>
+                      <option value="content">Content</option>
+                      <option value="webview">WebView</option>
+                    </Select>
+                  </FormControl>
+                  {pageEdit?.type === 'content' && (
+                    <>
+                      <FormControl>
+                        <FormLabel>Obrázek stránky</FormLabel>
+                        <Input type="file" accept="image/*" onChange={handleImageChange} />
+                        {(imagePreview || pageEdit?.imageUrl) && (
+                          <Box mt={2}>
+                            <img
+                              src={imagePreview || pageEdit?.imageUrl}
+                              alt="Náhled obrázku"
+                              style={{ maxWidth: '100%', maxHeight: 200, borderRadius: 8, border: '1px solid #ccc' }}
+                            />
+                          </Box>
+                        )}
+                        {uploadingImage && <Text color="blue.500">Nahrávám obrázek...</Text>}
+                      </FormControl>
+                      <FormControl>
+                        <FormLabel>Obsah stránky</FormLabel>
+                        <Textarea value={pageEdit?.content || ''} onChange={e => setPageEdit({ ...pageEdit, content: e.target.value })} />
+                      </FormControl>
+                    </>
+                  )}
+                  {pageEdit?.type === 'webview' && (
+                    <>
+                      <FormControl>
+                        <FormLabel>URL</FormLabel>
+                        <Input value={pageEdit?.url || ''} onChange={e => setPageEdit({ ...pageEdit, url: e.target.value })} />
+                      </FormControl>
+                      <FormControl>
+                        <FormLabel>Skryté elementy (CSS selektory, oddělené čárkou)</FormLabel>
+                        <Input value={pageEdit?.hiddenSelectors?.join(', ') || ''} onChange={e => setPageEdit({ ...pageEdit, hiddenSelectors: e.target.value.split(',').map((s: string) => s.trim()) })} />
+                      </FormControl>
+                      <Button size="sm" colorScheme={pickerActive ? 'red' : 'blue'} mb={2} onClick={() => setPickerActive(!pickerActive)}>
+                        {pickerActive ? 'Ukončit výběr (kapátko)' : 'Vybrat elementy ke skrytí (kapátko)'}
+                      </Button>
+                      <Box>
+                        {pageEdit?.hiddenSelectors?.map((sel: string, i: number) => (
+                          <Box key={i} display="inline-block" bg="gray.200" px={2} py={1} borderRadius="md" m={1}>
+                            <Text as="span" fontSize="sm">{sel}</Text>
+                            <Button size="xs" ml={2} onClick={() => setPageEdit({ ...pageEdit, hiddenSelectors: pageEdit.hiddenSelectors.filter((s: string) => s !== sel) })}>x</Button>
+                          </Box>
+                        ))}
+                      </Box>
+                      {/* Náhled WebView (iframe) s kapátkem */}
+                      {pageEdit?.url && (
+                        <Box mt={2} borderWidth={1} borderRadius="md" overflow="hidden" h="300px">
+                          <iframe
+                            src={pageEdit.url}
+                            style={{ width: '100%', height: '100%', border: 'none' }}
+                            title="WebView náhled"
+                            ref={el => {
+                              if (el && pickerActive) {
+                                (el.contentWindow as any)?.postMessage({ type: 'INJECT_PICKER' }, '*');
+                                el.onload = () => {
+                                  (el.contentWindow as any)?.eval(getPickerScript());
+                                };
+                                setTimeout(() => {
+                                  try { (el.contentWindow as any)?.eval(getPickerScript()); } catch {};
+                                }, 1000);
+                              }
+                            }}
                           />
+                          <Text fontSize="xs" color="gray.500" mt={1}>
+                            Skryté elementy budou aplikovány v mobilní aplikaci.
+                          </Text>
                         </Box>
                       )}
-                      {uploadingImage && <Text color="blue.500">Nahrávám obrázek...</Text>}
-                    </FormControl>
-                    <FormControl>
-                      <FormLabel>Obsah stránky</FormLabel>
-                      <Textarea value={pageEdit?.content || ''} onChange={e => setPageEdit({ ...pageEdit, content: e.target.value })} />
-                    </FormControl>
-                  </>
-                )}
-                {pageEdit?.type === 'webview' && (
-                  <>
-                    <FormControl>
-                      <FormLabel>URL</FormLabel>
-                      <Input value={pageEdit?.url || ''} onChange={e => setPageEdit({ ...pageEdit, url: e.target.value })} />
-                    </FormControl>
-                    <FormControl>
-                      <FormLabel>Skryté elementy (CSS selektory, oddělené čárkou)</FormLabel>
-                      <Input value={pageEdit?.hiddenSelectors?.join(', ') || ''} onChange={e => setPageEdit({ ...pageEdit, hiddenSelectors: e.target.value.split(',').map((s: string) => s.trim()) })} />
-                    </FormControl>
-                    <Button size="sm" colorScheme={pickerActive ? 'red' : 'blue'} mb={2} onClick={() => setPickerActive(!pickerActive)}>
-                      {pickerActive ? 'Ukončit výběr (kapátko)' : 'Vybrat elementy ke skrytí (kapátko)'}
-                    </Button>
-                    <Box>
-                      {pageEdit?.hiddenSelectors?.map((sel: string, i: number) => (
-                        <Box key={i} display="inline-block" bg="gray.200" px={2} py={1} borderRadius="md" m={1}>
-                          <Text as="span" fontSize="sm">{sel}</Text>
-                          <Button size="xs" ml={2} onClick={() => setPageEdit({ ...pageEdit, hiddenSelectors: pageEdit.hiddenSelectors.filter((s: string) => s !== sel) })}>x</Button>
-                        </Box>
-                      ))}
-                    </Box>
-                    {/* Náhled WebView (iframe) s kapátkem */}
-                    {pageEdit?.url && (
-                      <Box mt={2} borderWidth={1} borderRadius="md" overflow="hidden" h="300px">
-                        <iframe
-                          src={pageEdit.url}
-                          style={{ width: '100%', height: '100%', border: 'none' }}
-                          title="WebView náhled"
-                          ref={el => {
-                            if (el && pickerActive) {
-                              el.contentWindow?.postMessage({ type: 'INJECT_PICKER' }, '*');
-                              el.onload = () => {
-                                el.contentWindow?.eval(getPickerScript());
-                              };
-                              setTimeout(() => {
-                                try { el.contentWindow?.eval(getPickerScript()); } catch {};
-                              }, 1000);
-                            }
-                          }}
-                        />
-                        <Text fontSize="xs" color="gray.500" mt={1}>
-                          Skryté elementy budou aplikovány v mobilní aplikaci.
-                        </Text>
+                    </>
+                  )}
+                </VStack>
+                {/* Pravý sloupec: náhled a akční tlačítka */}
+                <VStack spacing={4} align="stretch" minW={0}>
+                  {/* Náhled aplikace */}
+                  <Box mt={0} p={2} borderWidth={1} borderRadius="md" bg="gray.100">
+                    <Heading size="sm" mb={2}>Náhled aplikace (mobilní simulátor)</Heading>
+                    <Box
+                      mx="auto"
+                      border="2px solid #333"
+                      borderRadius="32px"
+                      w="390px"
+                      h="800px"
+                      bg="white"
+                      position="relative"
+                      overflow="hidden"
+                      boxShadow="lg"
+                    >
+                      {/* Menu (dole) */}
+                      <Box position="absolute" bottom={0} left={0} w="100%" bg="gray.100" borderTop="1px solid #ccc" display="flex" justifyContent="space-around" p={2}>
+                        {pages.map((page, idx) => (
+                          <Button
+                            key={idx}
+                            size="sm"
+                            variant={simPageIdx === idx ? 'solid' : 'ghost'}
+                            colorScheme="blue"
+                            onClick={() => setSimPageIdx(idx)}
+                          >
+                            {page.title}
+                          </Button>
+                        ))}
                       </Box>
-                    )}
-                  </>
-                )}
-              </VStack>
+                      {/* Obsah stránky */}
+                      <Box p={4} pt={6} pb={16} h="100%" overflowY="auto">
+                        {pages[simPageIdx]?.type === 'content' && (
+                          <Box>
+                            <Heading size="md" mb={2}>{pages[simPageIdx]?.title}</Heading>
+                            <Text>{pages[simPageIdx]?.content || <i>Žádný obsah</i>}</Text>
+                          </Box>
+                        )}
+                        {pages[simPageIdx]?.type === 'webview' && pages[simPageIdx]?.url && (
+                          <Box h="600px" borderWidth={1} borderRadius="md" overflow="hidden">
+                            <iframe
+                              src={pages[simPageIdx]?.url}
+                              style={{ width: '100%', height: '100%', border: 'none' }}
+                              title="WebView náhled"
+                            />
+                            <Text fontSize="xs" color="gray.500" mt={1}>
+                              Skryté elementy budou aplikovány v mobilní aplikaci.
+                            </Text>
+                          </Box>
+                        )}
+                      </Box>
+                      {/* Horní lišta (imitace) */}
+                      <Box position="absolute" top={0} left={0} w="100%" h="32px" bg="gray.200" borderBottom="1px solid #ccc" borderTopRadius="32px" />
+                    </Box>
+                  </Box>
+                  <HStack justify="flex-end" mt={4}>
+                    <Button colorScheme="blue" onClick={handleSavePageEdit}>
+                      Uložit
+                    </Button>
+                    <Button onClick={() => setIsPageEditorOpen(false)}>Zrušit</Button>
+                  </HStack>
+                </VStack>
+              </SimpleGrid>
             </ModalBody>
-            <ModalFooter>
-              <Button colorScheme="blue" mr={3} onClick={handleSavePageEdit}>
-                Uložit
-              </Button>
-              <Button onClick={() => setIsPageEditorOpen(false)}>Zrušit</Button>
-            </ModalFooter>
           </ModalContent>
         </Modal>
       </VStack>
     </Container>
   )
-} 
+}
