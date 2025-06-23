@@ -39,22 +39,56 @@ function validateConfig(config) {
 
 // Aktualizace obsahu aplikace
 async function updateAppContent(buildDir, config) {
-  // Aktualizace app_controller.dart
+  // Aktualizace app_controller.dart - inicializace dat
   const controllerPath = path.join(buildDir, 'lib', 'controllers', 'app_controller.dart');
   let controller = await fs.readFile(controllerPath, 'utf8');
   
-  // Nahrazení placeholderů skutečným obsahem
-  controller = controller.replace(
-    /List<Map<String, dynamic>> _pages = \[\];/,
-    `List<Map<String, dynamic>> _pages = ${JSON.stringify(config.pages, null, 2)};`
-  );
-  controller = controller.replace(
-    /Map<String, dynamic> _appSettings = {};/,
-    `Map<String, dynamic> _appSettings = ${JSON.stringify(config.settings, null, 2)};`
-  );
+  // Přidej metodu pro inicializaci dat, pokud ještě neexistuje
+  if (!controller.includes('initializeWithGeneratorData')) {
+    const initDataCall = `
+  // Initialize with generator data
+  void initializeWithGeneratorData() {
+    initializeAppData(${JSON.stringify(config.pages, null, 2)}, ${JSON.stringify(config.settings, null, 2)});
+  }`;
+    
+    // Najdi konec třídy a přidej metodu před poslední závorku
+    const lastBraceIndex = controller.lastIndexOf('}');
+    if (lastBraceIndex !== -1) {
+      controller = controller.slice(0, lastBraceIndex) + initDataCall + '\n' + controller.slice(lastBraceIndex);
+    }
+  }
   
   await fs.writeFile(controllerPath, controller);
-  console.log('App content updated successfully');
+  console.log('App controller updated with initialization method');
+
+  // Aktualizace main.dart - volání inicializace
+  const mainPath = path.join(buildDir, 'lib', 'main.dart');
+  let mainContent = await fs.readFile(mainPath, 'utf8');
+  
+  // Najdi místo kde se vytváří AppController a přidej inicializaci
+  if (!mainContent.includes('initializeWithGeneratorData')) {
+    mainContent = mainContent.replace(
+      /(ChangeNotifierProvider\(create: \(_\) => AppController\(\)\))/,
+      `ChangeNotifierProvider(create: (_) {
+        final controller = AppController();
+        controller.initializeWithGeneratorData();
+        return controller;
+      })`
+    );
+  }
+  
+  await fs.writeFile(mainPath, mainContent);
+  console.log('Main.dart updated with controller initialization');
+
+  // Aktualizace config.json v assets
+  const configPath = path.join(buildDir, 'assets', 'config.json');
+  const configData = {
+    appName: config.appName,
+    pages: config.pages,
+    settings: config.settings
+  };
+  await fs.writeFile(configPath, JSON.stringify(configData, null, 2));
+  console.log('Assets config.json updated');
 }
 
 // Aktualizace konfigurace aplikace
@@ -67,9 +101,8 @@ async function updateAppConfig(buildDir, config) {
   await fs.writeFile(pubspecPath, pubspec);
   console.log('pubspec.yaml updated successfully');
 
-  // Nastav packageName
-  const appName = config.title || config.appName || 'Generated App';
-  const packageName = config.packageName || `com.example.${appName.toLowerCase().replace(/[^a-z0-9]/g, '')}`;
+  // Použij existující package name z google-services.json
+  const packageName = 'com.example.flutter_basic'; // Fixní package name pro existující google-services.json
 
   // build.gradle
   const buildGradlePath = path.join(buildDir, 'android', 'app', 'build.gradle');
@@ -113,25 +146,67 @@ async function updateAppConfig(buildDir, config) {
   );
   await fs.writeFile(manifestPath, manifest);
   console.log('AndroidManifest.xml updated with correct MainActivity package (all variants).');
+
+  // Aktualizace strings.xml - název aplikace
+  const stringsPath = path.join(buildDir, 'android', 'app', 'src', 'main', 'res', 'values', 'strings.xml');
+  let strings = await fs.readFile(stringsPath, 'utf8');
+  strings = strings.replace(/<string name="app_name">.*<\/string>/, `<string name="app_name">${config.appName}</string>`);
+  await fs.writeFile(stringsPath, strings);
+  console.log('strings.xml updated with app name:', config.appName);
 }
 
 const changeMainActivityPackage = async (buildDir, packageName) => {
   // Zjisti cestu ke staré MainActivity
   const oldPackage = 'com.example.flutter_basic';
   const oldPath = path.join(buildDir, 'android', 'app', 'src', 'main', 'kotlin', ...oldPackage.split('.'), 'MainActivity.kt');
+  
+  // Pokud MainActivity neexistuje, vytvoř ho
   if (!(await fs.pathExists(oldPath))) {
-    console.warn('MainActivity.kt nenalezen, přeskočeno přejmenování balíčku.');
-    return;
+    console.log('MainActivity.kt nenalezen, vytvářím nový...');
+    const templateMainActivity = path.join(TEMPLATE_DIR, 'android', 'app', 'src', 'main', 'kotlin', ...oldPackage.split('.'), 'MainActivity.kt');
+    
+    if (await fs.pathExists(templateMainActivity)) {
+      await fs.ensureDir(path.dirname(oldPath));
+      await fs.copy(templateMainActivity, oldPath);
+      console.log('MainActivity.kt zkopírován z template');
+    } else {
+      console.error('MainActivity.kt nenalezen ani v template!');
+      return;
+    }
   }
-  // Nová cesta
+  
+  // Nová cesta (pokud se package name liší)
   const newPath = path.join(buildDir, 'android', 'app', 'src', 'main', 'kotlin', ...packageName.split('.'), 'MainActivity.kt');
-  await fs.ensureDir(path.dirname(newPath));
-  // Uprav package deklaraci
-  let content = await fs.readFile(oldPath, 'utf8');
-  content = content.replace(/^package .*/m, `package ${packageName}`);
-  await fs.writeFile(newPath, content);
-  await fs.remove(oldPath);
+  
+  // Pokud se package name liší, přesuň soubor
+  if (oldPath !== newPath) {
+    await fs.ensureDir(path.dirname(newPath));
+    // Uprav package deklaraci
+    let content = await fs.readFile(oldPath, 'utf8');
+    content = content.replace(/^package .*/m, `package ${packageName}`);
+    await fs.writeFile(newPath, content);
+    await fs.remove(oldPath);
+    console.log(`MainActivity přesunut z ${oldPackage} do ${packageName}`);
+  } else {
+    // Pokud se package name neliší, jen aktualizuj obsah
+    let content = await fs.readFile(oldPath, 'utf8');
+    content = content.replace(/^package .*/m, `package ${packageName}`);
+    await fs.writeFile(oldPath, content);
+    console.log(`MainActivity aktualizován s package ${packageName}`);
+  }
+  
   // Smaž prázdné složky po přesunu (volitelné)
+  try {
+    const oldDir = path.dirname(oldPath);
+    if (oldDir !== path.dirname(newPath)) {
+      const files = await fs.readdir(oldDir);
+      if (files.length === 0) {
+        await fs.remove(oldDir);
+      }
+    }
+  } catch (e) {
+    // Ignore errors when removing empty directories
+  }
 };
 
 // Hlavní funkce pro generování aplikace

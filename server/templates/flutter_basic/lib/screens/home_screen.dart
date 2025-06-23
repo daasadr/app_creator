@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:get/get.dart';
 import '../controllers/app_controller.dart';
+import 'dart:convert';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -10,145 +12,247 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  int _selectedIndex = 0;
-
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      Provider.of<AppController>(context, listen: false).loadAppContent();
-      Provider.of<AppController>(context, listen: false).loadAppSettings();
+      context.read<AppController>().loadAppContent();
     });
   }
 
   @override
   Widget build(BuildContext context) {
-    return Consumer<AppController>(
-      builder: (context, controller, child) {
-        final pages = controller.pages;
-        final settings = controller.appSettings;
-        final error = controller.error;
-        final isLoading = controller.isLoading;
-
-        if (error != null) {
-          return Scaffold(
-            appBar: AppBar(
-              title: Text(
-                  settings['appName'] ?? settings['description'] ?? 'Aplikace'),
-            ),
-            body: Center(
-              child: Text(
-                'Chyba při načítání obsahu:\n$error',
-                style: const TextStyle(color: Colors.red),
-                textAlign: TextAlign.center,
-              ),
-            ),
-          );
-        }
-
-        return Scaffold(
-          appBar: AppBar(
-            title: Text(
-                settings['appName'] ?? settings['description'] ?? 'Aplikace'),
+    return Scaffold(
+      appBar: AppBar(
+        title: Consumer<AppController>(
+          builder: (context, controller, child) {
+            return Text(controller.appSettings['appName'] ?? 'Generated App');
+          },
+        ),
+        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.admin_panel_settings),
+            onPressed: () => Get.toNamed('/admin'),
           ),
-          body: isLoading
-              ? const Center(child: CircularProgressIndicator())
-              : pages.isEmpty
-                  ? const Center(child: Text('Žádné stránky k zobrazení'))
-                  : _buildPageContent(pages[_selectedIndex]),
-          bottomNavigationBar: pages.length > 1
-              ? BottomNavigationBar(
-                  currentIndex: _selectedIndex,
-                  items: pages.map((page) {
-                    return BottomNavigationBarItem(
-                      icon: Icon(_getIconForPageType(page['type'])),
-                      label: page['title'] ?? 'Page',
-                    );
-                  }).toList(),
-                  onTap: (index) {
-                    setState(() {
-                      _selectedIndex = index;
-                    });
-                  },
-                )
-              : null,
-        );
-      },
+        ],
+      ),
+      body: Consumer<AppController>(
+        builder: (context, controller, child) {
+          if (controller.isLoading) {
+            return const Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  CircularProgressIndicator(),
+                  SizedBox(height: 16),
+                  Text('Loading app content...'),
+                ],
+              ),
+            );
+          }
+
+          if (controller.error != null) {
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.error, size: 64, color: Colors.red),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Error loading content',
+                    style: Theme.of(context).textTheme.headlineSmall,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    controller.error!,
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  ),
+                  const SizedBox(height: 16),
+                  ElevatedButton(
+                    onPressed: () {
+                      controller.clearError();
+                      controller.loadAppContent();
+                    },
+                    child: const Text('Retry'),
+                  ),
+                ],
+              ),
+            );
+          }
+
+          if (controller.pages.isEmpty) {
+            return const Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.info, size: 64, color: Colors.blue),
+                  SizedBox(height: 16),
+                  Text(
+                    'No content available',
+                    style: TextStyle(fontSize: 18),
+                  ),
+                  SizedBox(height: 8),
+                  Text(
+                    'Please check your configuration',
+                    style: TextStyle(fontSize: 14, color: Colors.grey),
+                  ),
+                ],
+              ),
+            );
+          }
+
+          return ListView.builder(
+            padding: const EdgeInsets.all(16),
+            itemCount: controller.pages.length,
+            itemBuilder: (context, index) {
+              final page = controller.pages[index];
+              return _buildPageCard(page, index);
+            },
+          );
+        },
+      ),
     );
   }
 
-  Widget _buildPageContent(Map<String, dynamic>? page) {
-    if (page == null) return const SizedBox.shrink();
-    switch (page['type']) {
-      case 'content':
-        return SingleChildScrollView(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              if (page['imageUrl'] != null &&
-                  page['imageUrl'].toString().isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 16.0),
-                  child: Image.network(page['imageUrl']),
+  Widget _buildPageCard(Map<String, dynamic> page, int index) {
+    final title = page['title'] ?? 'Untitled';
+    final type = page['type'] ?? 'content';
+    final content = page['content'] ?? '';
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 16),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  _getIconForType(type),
+                  color: Theme.of(context).primaryColor,
                 ),
-              if (page['title'] != null)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 8.0),
+                const SizedBox(width: 8),
+                Expanded(
                   child: Text(
-                    page['title'],
-                    style: const TextStyle(
-                        fontSize: 24, fontWeight: FontWeight.bold),
+                    title,
+                    style: Theme.of(context).textTheme.headlineSmall,
                   ),
                 ),
-              if (page['content'] != null)
-                Text(
-                  page['content'],
-                  style: const TextStyle(fontSize: 16),
-                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            if (type == 'content') ...[
+              Text(
+                content,
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
+            ] else if (type == 'form') ...[
+              _buildFormPreview(content),
+            ] else if (type == 'list') ...[
+              _buildListPreview(content),
             ],
-          ),
-        );
-      case 'webview':
-        return Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              if (page['title'] != null)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 8.0),
-                  child: Text(
-                    page['title'],
-                    style: const TextStyle(
-                        fontSize: 24, fontWeight: FontWeight.bold),
-                  ),
+            const SizedBox(height: 12),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                TextButton(
+                  onPressed: () {
+                    // Navigate to page detail or edit
+                    Get.toNamed('/admin');
+                  },
+                  child: const Text('Edit'),
                 ),
-              if (page['url'] != null)
-                Padding(
-                  padding: const EdgeInsets.all(8.0),
-                  child: Text(
-                    page['url'],
-                    style: const TextStyle(fontSize: 14, color: Colors.blue),
-                  ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFormPreview(String content) {
+    try {
+      final formData = Map<String, dynamic>.from(json.decode(content));
+      final fields = List<Map<String, dynamic>>.from(formData['fields'] ?? []);
+
+      return Column(
+        children: fields.take(3).map((field) {
+          final label = field['label'] ?? 'Field';
+          final type = field['type'] ?? 'text';
+
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Row(
+              children: [
+                Icon(
+                  _getFieldIcon(type),
+                  size: 16,
+                  color: Colors.grey,
                 ),
-              const SizedBox(height: 16),
-              const Text('WebView není na této platformě podporován.'),
-            ],
-          ),
-        );
-      default:
-        return const Center(child: Text('Unknown page type'));
+                const SizedBox(width: 8),
+                Text('$label (${type})'),
+              ],
+            ),
+          );
+        }).toList(),
+      );
+    } catch (e) {
+      return Text('Form: $content');
     }
   }
 
-  IconData _getIconForPageType(String? type) {
+  Widget _buildListPreview(String content) {
+    try {
+      final listData = Map<String, dynamic>.from(json.decode(content));
+      final items = List<String>.from(listData['items'] ?? []);
+
+      return Column(
+        children: items.take(3).map((item) {
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 4),
+            child: Row(
+              children: [
+                const Icon(Icons.arrow_right, size: 16, color: Colors.grey),
+                const SizedBox(width: 8),
+                Expanded(child: Text(item)),
+              ],
+            ),
+          );
+        }).toList(),
+      );
+    } catch (e) {
+      return Text('List: $content');
+    }
+  }
+
+  IconData _getIconForType(String type) {
     switch (type) {
       case 'content':
         return Icons.article;
-      case 'webview':
-        return Icons.web;
+      case 'form':
+        return Icons.input;
+      case 'list':
+        return Icons.list;
       default:
         return Icons.pageview;
+    }
+  }
+
+  IconData _getFieldIcon(String type) {
+    switch (type) {
+      case 'text':
+        return Icons.text_fields;
+      case 'email':
+        return Icons.email;
+      case 'number':
+        return Icons.numbers;
+      case 'date':
+        return Icons.calendar_today;
+      default:
+        return Icons.input;
     }
   }
 }
