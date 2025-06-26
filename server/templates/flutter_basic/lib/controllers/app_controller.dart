@@ -43,56 +43,12 @@ class AppController extends ChangeNotifier {
   Future<void> loadAppContent() async {
     _setLoading(true);
     try {
-      // Try to load from Firebase first
-      if (await _initializeFirebase()) {
-        await _loadFromFirebase();
-      } else {
-        // Fallback to local assets
-        await _loadFromAssets();
-      }
+      // VŽDY načti z assets
+      await _loadFromAssets();
     } catch (e) {
       _setError('Failed to load app content: $e');
-      // Try to load from assets as fallback
-      try {
-        await _loadFromAssets();
-      } catch (assetError) {
-        _setError('Failed to load from assets: $assetError');
-      }
     }
     _setLoading(false);
-  }
-
-  // Initialize Firebase
-  Future<bool> _initializeFirebase() async {
-    try {
-      if (Firebase.apps.isNotEmpty) {
-        _firestore = FirebaseFirestore.instance;
-        _auth = FirebaseAuth.instance;
-        return true;
-      }
-      return false;
-    } catch (e) {
-      print('Firebase not available: $e');
-      return false;
-    }
-  }
-
-  // Load data from Firebase
-  Future<void> _loadFromFirebase() async {
-    if (_firestore == null) return;
-
-    try {
-      final doc = await _firestore!.collection('apps').doc('main').get();
-      if (doc.exists) {
-        final data = doc.data()!;
-        _pages = List<Map<String, dynamic>>.from(data['pages'] ?? []);
-        _appSettings = Map<String, dynamic>.from(data['settings'] ?? {});
-        notifyListeners();
-      }
-    } catch (e) {
-      print('Firebase load error: $e');
-      throw e;
-    }
   }
 
   // Load data from assets
@@ -106,21 +62,6 @@ class AppController extends ChangeNotifier {
     } catch (e) {
       print('Assets load error: $e');
       throw e;
-    }
-  }
-
-  // Save data to Firebase
-  Future<void> saveToFirebase() async {
-    if (_firestore == null) return;
-
-    try {
-      await _firestore!.collection('apps').doc('main').set({
-        'pages': _pages,
-        'settings': _appSettings,
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
-    } catch (e) {
-      _setError('Failed to save to Firebase: $e');
     }
   }
 
@@ -161,7 +102,7 @@ class AppController extends ChangeNotifier {
       notifyListeners();
       saveToLocal();
       if (_firestore != null) {
-        saveToFirebase();
+        // saveToFirebase();
       }
     }
   }
@@ -172,7 +113,7 @@ class AppController extends ChangeNotifier {
     notifyListeners();
     saveToLocal();
     if (_firestore != null) {
-      saveToFirebase();
+      // saveToFirebase();
     }
   }
 
@@ -183,7 +124,7 @@ class AppController extends ChangeNotifier {
       notifyListeners();
       saveToLocal();
       if (_firestore != null) {
-        saveToFirebase();
+        // saveToFirebase();
       }
     }
   }
@@ -194,7 +135,7 @@ class AppController extends ChangeNotifier {
     notifyListeners();
     saveToLocal();
     if (_firestore != null) {
-      saveToFirebase();
+      // saveToFirebase();
     }
   }
 

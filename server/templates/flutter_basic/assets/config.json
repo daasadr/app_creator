@@ -21,6 +21,11 @@
       }
     },
     {
+      "title": "Web Page",
+      "type": "webview",
+      "url": "https://www.google.com"
+    },
+    {
       "title": "Gallery",
       "type": "grid",
       "content": {

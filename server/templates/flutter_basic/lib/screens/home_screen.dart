@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:get/get.dart';
+import 'package:webview_flutter/webview_flutter.dart';
 import '../controllers/app_controller.dart';
 import 'dart:convert';
 
@@ -12,6 +13,8 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
+  int _currentPageIndex = 0;
+
   @override
   void initState() {
     super.initState();
@@ -31,11 +34,74 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
         actions: [
-          IconButton(
-            icon: const Icon(Icons.admin_panel_settings),
-            onPressed: () => Get.toNamed('/admin'),
-          ),
+          if (_currentPageIndex > 0)
+            IconButton(
+              icon: const Icon(Icons.home),
+              onPressed: () {
+                setState(() {
+                  _currentPageIndex = 0;
+                });
+              },
+              tooltip: 'Home',
+            ),
         ],
+      ),
+      drawer: Consumer<AppController>(
+        builder: (context, controller, child) {
+          if (controller.pages.isEmpty) return SizedBox.shrink();
+          
+          return Drawer(
+            child: ListView(
+              padding: EdgeInsets.zero,
+              children: [
+                DrawerHeader(
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).primaryColor,
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        controller.appSettings['appName'] ?? 'Generated App',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        controller.appSettings['description'] ?? '',
+                        style: const TextStyle(
+                          color: Colors.white70,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                ...controller.pages.asMap().entries.map((entry) {
+                  final index = entry.key;
+                  final page = entry.value;
+                  final title = page['title'] ?? 'Untitled';
+                  final type = page['type'] ?? 'content';
+                  
+                  return ListTile(
+                    leading: Icon(_getIconForType(type)),
+                    title: Text(title),
+                    selected: index == _currentPageIndex,
+                    onTap: () {
+                      setState(() {
+                        _currentPageIndex = index;
+                      });
+                      Navigator.pop(context); // Zavře drawer
+                    },
+                  );
+                }).toList(),
+              ],
+            ),
+          );
+        },
       ),
       body: Consumer<AppController>(
         builder: (context, controller, child) {
@@ -103,97 +169,148 @@ class _HomeScreenState extends State<HomeScreen> {
             );
           }
 
-          return ListView.builder(
-            padding: const EdgeInsets.all(16),
-            itemCount: controller.pages.length,
-            itemBuilder: (context, index) {
-              final page = controller.pages[index];
-              return _buildPageCard(page, index);
-            },
-          );
+          // Zobraz aktuální stránku
+          final currentPage = controller.pages[_currentPageIndex];
+          return _buildPageContent(currentPage);
         },
       ),
     );
   }
 
-  Widget _buildPageCard(Map<String, dynamic> page, int index) {
+  Widget _buildPageContent(Map<String, dynamic> page) {
     final title = page['title'] ?? 'Untitled';
     final type = page['type'] ?? 'content';
     final content = page['content'] ?? '';
+    final url = page['url'] ?? '';
+    final imageUrl = page['imageUrl'] ?? '';
 
-    return Card(
-      margin: const EdgeInsets.only(bottom: 16),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(
-                  _getIconForType(type),
-                  color: Theme.of(context).primaryColor,
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Nadpis stránky
+          Text(
+            title,
+            style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 24),
+          
+          // Obsah podle typu
+          if (type == 'content') ...[
+            if (imageUrl.isNotEmpty) ...[
+              Center(
+                child: Image.network(
+                  imageUrl,
+                  height: 200,
+                  width: double.infinity,
+                  fit: BoxFit.cover,
+                  errorBuilder: (context, error, stackTrace) {
+                    return Container(
+                      height: 200,
+                      width: double.infinity,
+                      color: Colors.grey[300],
+                      child: const Icon(Icons.image, size: 64, color: Colors.grey),
+                    );
+                  },
                 ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    title,
-                    style: Theme.of(context).textTheme.headlineSmall,
+              ),
+              const SizedBox(height: 16),
+            ],
+            Text(
+              content,
+              style: Theme.of(context).textTheme.bodyLarge,
+            ),
+          ] else if (type == 'webview') ...[
+            if (url.isNotEmpty) ...[
+              Container(
+                height: 400,
+                width: double.infinity,
+                decoration: BoxDecoration(
+                  border: Border.all(color: Colors.grey[300]!),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: WebViewWidget(
+                    controller: WebViewController()
+                      ..setJavaScriptMode(JavaScriptMode.unrestricted)
+                      ..loadRequest(Uri.parse(url))
+                      ..setNavigationDelegate(
+                        NavigationDelegate(
+                          onProgress: (int progress) {
+                            // Můžete přidat progress indicator
+                          },
+                          onPageStarted: (String url) {
+                            // Stránka začala načítat
+                          },
+                          onPageFinished: (String url) {
+                            // Stránka dokončila načítání
+                          },
+                          onWebResourceError: (WebResourceError error) {
+                            // Chyba při načítání
+                          },
+                        ),
+                      ),
                   ),
                 ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            if (type == 'content') ...[
-              Text(
-                content,
-                style: Theme.of(context).textTheme.bodyMedium,
               ),
-            ] else if (type == 'form') ...[
-              _buildFormPreview(content),
-            ] else if (type == 'list') ...[
-              _buildListPreview(content),
-            ],
-            const SizedBox(height: 12),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                TextButton(
-                  onPressed: () {
-                    // Navigate to page detail or edit
-                    Get.toNamed('/admin');
-                  },
-                  child: const Text('Edit'),
+              const SizedBox(height: 16),
+              Text(
+                'URL: $url',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: Colors.blue,
                 ),
-              ],
+              ),
+            ] else ...[
+              const Center(
+                child: Text('No URL provided for WebView'),
+              ),
+            ],
+          ] else if (type == 'form') ...[
+            _buildFormContent(content),
+          ] else if (type == 'list') ...[
+            _buildListContent(content),
+          ] else ...[
+            Text(
+              content,
+              style: Theme.of(context).textTheme.bodyLarge,
             ),
           ],
-        ),
+        ],
       ),
     );
   }
 
-  Widget _buildFormPreview(String content) {
+  Widget _buildFormContent(String content) {
     try {
       final formData = Map<String, dynamic>.from(json.decode(content));
       final fields = List<Map<String, dynamic>>.from(formData['fields'] ?? []);
 
       return Column(
-        children: fields.take(3).map((field) {
+        children: fields.map((field) {
           final label = field['label'] ?? 'Field';
           final type = field['type'] ?? 'text';
+          final required = field['required'] ?? false;
 
           return Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: Row(
+            padding: const EdgeInsets.only(bottom: 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(
-                  _getFieldIcon(type),
-                  size: 16,
-                  color: Colors.grey,
+                Text(
+                  '$label${required ? ' *' : ''}',
+                  style: const TextStyle(fontWeight: FontWeight.bold),
                 ),
-                const SizedBox(width: 8),
-                Text('$label (${type})'),
+                const SizedBox(height: 8),
+                TextFormField(
+                  decoration: InputDecoration(
+                    border: const OutlineInputBorder(),
+                    hintText: 'Enter $label',
+                  ),
+                ),
               ],
             ),
           );
@@ -204,18 +321,18 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  Widget _buildListPreview(String content) {
+  Widget _buildListContent(String content) {
     try {
       final listData = Map<String, dynamic>.from(json.decode(content));
       final items = List<String>.from(listData['items'] ?? []);
 
       return Column(
-        children: items.take(3).map((item) {
+        children: items.map((item) {
           return Padding(
-            padding: const EdgeInsets.only(bottom: 4),
+            padding: const EdgeInsets.only(bottom: 8),
             child: Row(
               children: [
-                const Icon(Icons.arrow_right, size: 16, color: Colors.grey),
+                const Icon(Icons.arrow_right, color: Colors.blue),
                 const SizedBox(width: 8),
                 Expanded(child: Text(item)),
               ],
@@ -232,27 +349,14 @@ class _HomeScreenState extends State<HomeScreen> {
     switch (type) {
       case 'content':
         return Icons.article;
+      case 'webview':
+        return Icons.web;
       case 'form':
         return Icons.input;
       case 'list':
         return Icons.list;
       default:
         return Icons.pageview;
-    }
-  }
-
-  IconData _getFieldIcon(String type) {
-    switch (type) {
-      case 'text':
-        return Icons.text_fields;
-      case 'email':
-        return Icons.email;
-      case 'number':
-        return Icons.numbers;
-      case 'date':
-        return Icons.calendar_today;
-      default:
-        return Icons.input;
     }
   }
 }

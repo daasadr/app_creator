@@ -101,8 +101,8 @@ async function updateAppConfig(buildDir, config) {
   await fs.writeFile(pubspecPath, pubspec);
   console.log('pubspec.yaml updated successfully');
 
-  // Použij existující package name z google-services.json
-  const packageName = 'com.example.flutter_basic'; // Fixní package name pro existující google-services.json
+  // Použij packageName z configu
+  const packageName = config.packageName || 'com.example.flutter_basic';
 
   // build.gradle
   const buildGradlePath = path.join(buildDir, 'android', 'app', 'build.gradle');
@@ -111,7 +111,7 @@ async function updateAppConfig(buildDir, config) {
     /applicationId ".*"/, `applicationId "${packageName}"`
   );
   buildGradle = buildGradle.replace(
-    /namespace "com\.example\.flutter_basic"/g,
+    /namespace ".*"/g,
     `namespace "${packageName}"`
   );
   // Nastav compileSdkVersion na 35
@@ -139,13 +139,18 @@ async function updateAppConfig(buildDir, config) {
   // AndroidManifest.xml
   const manifestPath = path.join(buildDir, 'android', 'app', 'src', 'main', 'AndroidManifest.xml');
   let manifest = await fs.readFile(manifestPath, 'utf8');
-  // Nahraď všechny možné varianty android:name u MainActivity za nový package
+  
+  // Nahraď package v manifestu
+  manifest = manifest.replace(/package="[^"]*"/, `package="${packageName}"`);
+  
+  // Nahraď android:name u MainActivity za nový package
   manifest = manifest.replace(
     /android:name="(\.MainActivity|com\.[a-zA-Z0-9_]+\.[a-zA-Z0-9_]+\.MainActivity)"/g,
     `android:name="${packageName}.MainActivity"`
   );
+  
   await fs.writeFile(manifestPath, manifest);
-  console.log('AndroidManifest.xml updated with correct MainActivity package (all variants).');
+  console.log(`AndroidManifest.xml aktualizován s package "${packageName}" a MainActivity "${packageName}.MainActivity"`);
 
   // Aktualizace strings.xml - název aplikace
   const stringsPath = path.join(buildDir, 'android', 'app', 'src', 'main', 'res', 'values', 'strings.xml');
@@ -156,9 +161,17 @@ async function updateAppConfig(buildDir, config) {
 }
 
 const changeMainActivityPackage = async (buildDir, packageName) => {
+  console.log(`Přesouvám MainActivity z com.example.flutter_basic do ${packageName}...`);
+  
   // Zjisti cestu ke staré MainActivity
   const oldPackage = 'com.example.flutter_basic';
   const oldPath = path.join(buildDir, 'android', 'app', 'src', 'main', 'kotlin', ...oldPackage.split('.'), 'MainActivity.kt');
+  
+  // Nová cesta podle nového packageName
+  const newPath = path.join(buildDir, 'android', 'app', 'src', 'main', 'kotlin', ...packageName.split('.'), 'MainActivity.kt');
+  
+  console.log(`Stará cesta: ${oldPath}`);
+  console.log(`Nová cesta: ${newPath}`);
   
   // Pokud MainActivity neexistuje, vytvoř ho
   if (!(await fs.pathExists(oldPath))) {
@@ -175,38 +188,39 @@ const changeMainActivityPackage = async (buildDir, packageName) => {
     }
   }
   
-  // Nová cesta (pokud se package name liší)
-  const newPath = path.join(buildDir, 'android', 'app', 'src', 'main', 'kotlin', ...packageName.split('.'), 'MainActivity.kt');
+  // Vždy přesuň soubor do nové složky (i když se package name neliší, pro jistotu)
+  await fs.ensureDir(path.dirname(newPath));
   
-  // Pokud se package name liší, přesuň soubor
+  // Přečti obsah a aktualizuj package deklaraci
+  let content = await fs.readFile(oldPath, 'utf8');
+  content = content.replace(/^package .*/m, `package ${packageName}`);
+  
+  // Zapiš do nové lokace
+  await fs.writeFile(newPath, content);
+  
+  // Smaž starý soubor
   if (oldPath !== newPath) {
-    await fs.ensureDir(path.dirname(newPath));
-    // Uprav package deklaraci
-    let content = await fs.readFile(oldPath, 'utf8');
-    content = content.replace(/^package .*/m, `package ${packageName}`);
-    await fs.writeFile(newPath, content);
     await fs.remove(oldPath);
     console.log(`MainActivity přesunut z ${oldPackage} do ${packageName}`);
   } else {
-    // Pokud se package name neliší, jen aktualizuj obsah
-    let content = await fs.readFile(oldPath, 'utf8');
-    content = content.replace(/^package .*/m, `package ${packageName}`);
-    await fs.writeFile(oldPath, content);
     console.log(`MainActivity aktualizován s package ${packageName}`);
   }
   
-  // Smaž prázdné složky po přesunu (volitelné)
+  // Smaž prázdné složky po přesunu
   try {
     const oldDir = path.dirname(oldPath);
     if (oldDir !== path.dirname(newPath)) {
       const files = await fs.readdir(oldDir);
       if (files.length === 0) {
         await fs.remove(oldDir);
+        console.log(`Smazána prázdná složka: ${oldDir}`);
       }
     }
   } catch (e) {
     // Ignore errors when removing empty directories
   }
+  
+  console.log(`MainActivity úspěšně přesunuta do ${packageName}`);
 };
 
 // Hlavní funkce pro generování aplikace
