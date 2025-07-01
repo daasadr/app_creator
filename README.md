@@ -1,65 +1,74 @@
-# App Generator
+# Dokumentace projektu: Flutter App Generator s Firebase
 
-A web-based platform for generating mobile applications for Android and iOS platforms.
+## Účel projektu
+Cílem projektu je vytvořit generátor mobilních aplikací (primárně pro Android, s možností rozšíření na iOS), který umožní uživateli jednoduše sestavit vlastní aplikaci přes webové rozhraní. Výsledná aplikace je generována na základě zadané konfigurace, obsahuje integraci s Firebase (Firestore, Storage, případně Auth) a podporuje offline režim s fallbackem na assety.
 
-## Features
+## Architektura a stavba projektu
 
-- Template-based app generation
-- Customizable app settings
-- Real-time preview
-- APK/AAB generation for Android
-- iOS app generation (coming soon)
-- Admin dashboard with:
-  - App customization
-  - Notification center
-  - Coupon management
-  - Usage statistics
-  - Banner management
-  - GPS integration
-  - Search functionality
-  - Photo reporting system
-  - App sharing capabilities
+### Hlavní části:
+- **Frontend (Editor/Generátor):**
+  - Webové rozhraní pro zadávání obsahu, stránek, nastavení a generování aplikací.
+  - Umožňuje správu více aplikací, editaci obsahu, generování APK.
+  - Role-based UI (superadmin/admin).
 
-## Tech Stack
+- **Backend (Node.js server):**
+  - Přijímá konfiguraci z editoru, generuje build složku na základě šablony.
+  - Zajišťuje úpravu šablony (Flutter) podle zadaných parametrů (název, packageName, stránky, obrázky, atd.).
+  - Kopíruje správný `google-services.json` podle packageName.
+  - Spouští build Flutter aplikace a ukládá výsledné APK do složky `downloads`.
 
-- Frontend: Next.js with TypeScript
-- UI Framework: Chakra UI
-- State Management: Zustand
-- Backend: Next.js API Routes
-- Database: Firebase
-- Mobile App Generation: React Native
+- **Šablona Flutter aplikace:**
+  - Základní struktura aplikace s podporou dynamického obsahu (stránky, webview, obrázky, atd.).
+  - Integrace s Firebase (Firestore, Storage, Auth).
+  - Podpora offline režimu (data z assetů).
+  - Dynamická navigace, dlaždicové menu, spodní lišta.
 
-## Getting Started
+- **Firebase projekt:**
+  - Každá generovaná aplikace má vlastní Firebase Android App (unikátní packageName).
+  - Správné `google-services.json` pro každou aplikaci.
 
-1. Install dependencies:
-```bash
-npm install
-```
+---
 
-2. Run the development server:
-```bash
-npm run dev
-```
+## Popis aktuálního stavu a dosažených milníků
 
-3. Open [http://localhost:3000](http://localhost:3000) in your browser.
+### Dosažené funkce:
+- [x] **Plně funkční generátor APK** na základě webového rozhraní a šablony.
+- [x] **Automatická úprava packageName, názvu aplikace, build.gradle, AndroidManifest, MainActivity.**
+- [x] **Správné kopírování a párování `google-services.json` podle packageName.**
+- [x] **Podpora více aplikací s různými packageName a vlastní Firebase konfigurací.**
+- [x] **Základní šablona Flutter aplikace s dynamickým načítáním obsahu (stránky, obrázky, webview, atd.).**
+- [x] **WebView stránka je nyní fullscreen bez nadpisu a bez zobrazení URL.**
+- [x] **Spodní navigační lišta se třemi tlačítky (Zpět, Domů, Menu).**
+- [x] **Celostránkové dlaždicové menu s dynamickým počtem dlaždic podle stránek.**
+- [x] **Instalace a spuštění vygenerované aplikace na reálném zařízení.**
+- [x] **Role-based UI v editoru (superadmin/admin).**
+- [x] **Podpora offline režimu s fallbackem na assety.**
 
-## Project Structure
+### Další plánované kroky:
+- [ ] Vylepšení vzhledu dlaždicového menu (ikony, barvy, animace).
+- [ ] Možnost přidávat vlastní ikony/obrázky ke stránkám v menu.
+- [ ] Rozšíření editoru o další typy stránek (formuláře, seznamy, atd.).
+- [ ] Podpora iOS buildů.
+- [ ] Automatizace uploadu APK na Google Play (volitelně).
+- [ ] Detailnější logování a monitoring generátoru.
+- [ ] Lokalizace aplikace a editoru.
 
-- `/app` - Next.js app directory
-- `/components` - Reusable React components
-- `/lib` - Utility functions and shared code
-- `/public` - Static assets
-- `/styles` - Global styles and theme
-- `/templates` - Mobile app templates
+---
 
-## Development
+## Zápis dokončených úkolů (milníky)
+*(Tuto sekci budeme průběžně doplňovat po každém větším dokončeném kroku)*
 
-The project uses TypeScript for type safety and better developer experience. Make sure to:
+- **27. 6. 2025** – Úspěšně vygenerována a nainstalována aplikace s fullscreen WebView.
+- **28. 6. 2025** – Implementována spodní lišta a celostránkové dlaždicové menu, vše funkční na reálném zařízení.
 
-1. Follow the TypeScript guidelines
-2. Write meaningful commit messages
-3. Test your changes before submitting PRs
+---
 
-## License
+## Poznámky a doporučení
+- Při každé větší změně šablony nebo generátoru doporučuji restartovat backend (`npm run dev`).
+- Při generování nové aplikace vždy smažte staré APK soubory, aby nedošlo k záměně.
+- Pro přidání nové funkce nejprve upravte šablonu Flutter, poté generátor a nakonec editor.
 
-MIT 
+---
+
+Pokud budete chtít dokument rozšířit, stačí mi napsat, co přidat nebo upravit! 
+Mohu jej také kdykoliv aktualizovat podle aktuálního stavu projektu. 

@@ -80,15 +80,44 @@ async function updateAppContent(buildDir, config) {
   await fs.writeFile(mainPath, mainContent);
   console.log('Main.dart updated with controller initialization');
 
-  // Aktualizace config.json v assets
+  // Aktualizace config.json v assets - zpracování nových polí
   const configPath = path.join(buildDir, 'assets', 'config.json');
+  
+  // Zpracování stránek - zajištění kompatibility
+  const processedPages = config.pages.map(page => {
+    const processedPage = { ...page };
+    
+    // Zajištění kompatibility s richContent
+    if (processedPage.richContent && !processedPage.content) {
+      processedPage.content = processedPage.richContent;
+    }
+    
+    // Zajištění kompatibility s images
+    if (processedPage.images && processedPage.images.length > 0 && !processedPage.imageUrl) {
+      processedPage.imageUrl = processedPage.images[0].url;
+    }
+    
+    // Zajištění kompatibility se starým způsobem
+    if (processedPage.imageUrl && (!processedPage.images || processedPage.images.length === 0)) {
+      processedPage.images = [{
+        url: processedPage.imageUrl,
+        alt: '',
+        position: 'center',
+        width: 100,
+        margin: 10
+      }];
+    }
+    
+    return processedPage;
+  });
+  
   const configData = {
     appName: config.appName,
-    pages: config.pages,
+    pages: processedPages,
     settings: config.settings
   };
   await fs.writeFile(configPath, JSON.stringify(configData, null, 2));
-  console.log('Assets config.json updated');
+  console.log('Assets config.json updated with rich content and images support');
 }
 
 // Aktualizace konfigurace aplikace
@@ -96,13 +125,41 @@ async function updateAppConfig(buildDir, config) {
   // Aktualizace pubspec.yaml
   const pubspecPath = path.join(buildDir, 'pubspec.yaml');
   let pubspec = await fs.readFile(pubspecPath, 'utf8');
-  pubspec = pubspec.replace(/name: .*/, `name: ${config.appName.toLowerCase().replace(/\s+/g, '_')}`);
+  
+  // Vytvoř platný Dart identifikátor - odstraň diakritiku a nahraď mezerami podtržítky
+  const validDartName = config.appName
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '') // Odstraň diakritiku
+    .replace(/[^a-z0-9_]/g, '_') // Nahraď neplatné znaky podtržítky
+    .replace(/_+/g, '_') // Nahraď více podtržítek jednou
+    .replace(/^_|_$/g, ''); // Odstraň podtržítka na začátku a konci
+  
+  pubspec = pubspec.replace(/name: .*/, `name: ${validDartName}`);
   pubspec = pubspec.replace(/version: .*/, `version: ${config.version || '1.0.0'}`);
   await fs.writeFile(pubspecPath, pubspec);
   console.log('pubspec.yaml updated successfully');
 
   // Použij packageName z configu
   const packageName = config.packageName || 'com.example.flutter_basic';
+
+  // Zkopíruj správný google-services.json pokud existuje
+  // Mapuj package name na adresář (odstraň podtržítka)
+  const packageDir = packageName.replace(/_/g, '');
+  const googleServicesPath = path.join(__dirname, 'google-services', packageDir, 'google-services.json');
+  const destPath = path.join(buildDir, 'android', 'app', 'google-services.json');
+  const wrongSrcPath = path.join(buildDir, 'android', 'app', 'src', 'google-services.json');
+  // Smaž špatný soubor v src, pokud existuje
+  if (fs.existsSync(wrongSrcPath)) {
+    await fs.remove(wrongSrcPath);
+    console.log('Smazán špatný google-services.json v src');
+  }
+  if (fs.existsSync(googleServicesPath)) {
+    await fs.copy(googleServicesPath, destPath);
+    console.log('Použit správný google-services.json pro', packageName);
+  } else {
+    console.warn('Chybí google-services.json pro', packageName, 'v adresáři', packageDir);
+  }
 
   // build.gradle
   const buildGradlePath = path.join(buildDir, 'android', 'app', 'build.gradle');

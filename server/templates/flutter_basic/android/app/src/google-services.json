@@ -7,28 +7,9 @@
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:996188428571:android:7ccf1cd9b0edcc82119bbe",
+        "mobilesdk_app_id": "1:996188428571:android:60cc6efb162123a5119bbe",
         "android_client_info": {
-          "package_name": "com.example.dsfsdf"
-        }
-      },
-      "oauth_client": [],
-      "api_key": [
-        {
-          "current_key": "AIzaSyBS7u9EAzgHFh5g65bsTrWk8zjgtQIOTG4"
-        }
-      ],
-      "services": {
-        "appinvite_service": {
-          "other_platform_oauth_client": []
-        }
-      }
-    },
-    {
-      "client_info": {
-        "mobilesdk_app_id": "1:996188428571:android:f342d97c0ec141a4119bbe",
-        "android_client_info": {
-          "package_name": "com.example.flutter_basic"
+          "package_name": "com.example.generated_app"
         }
       },
       "oauth_client": [],
