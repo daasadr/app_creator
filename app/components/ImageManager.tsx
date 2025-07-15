@@ -7,7 +7,7 @@ import { getStorage, ref as storageRef, uploadBytes, getDownloadURL, } from 'fir
 import { storage } from '../lib/firebase'
 
 
-function ImageManager({ images = [], onChange }: { images: PageImage[]; onChange: (images: PageImage[]) => void }) {
+function ImageManager({ images = [], onChange, onInsert }: { images: PageImage[]; onChange: (images: PageImage[]) => void; onInsert?: (url: string) => void }) {
   const [imageFiles, setImageFiles] = useState<File[]>([])
   const [uploadingImages, setUploadingImages] = useState(false)
 
@@ -170,6 +170,9 @@ function ImageManager({ images = [], onChange }: { images: PageImage[]; onChange
                         <Badge colorScheme="blue">{image.position}</Badge>
                         <Button size="xs" colorScheme="red" onClick={() => removeImage(index)}>
                           Smazat
+                        </Button>
+                        <Button size="xs" colorScheme="blue" ml={2} onClick={() => onInsert && onInsert(image.url)}>
+                          Vložit do obsahu
                         </Button>
                       </HStack>
                     </VStack>

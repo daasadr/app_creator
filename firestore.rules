@@ -1,0 +1,65 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Funkce pro kontrolu role uživatele
+    function isSuperadmin() {
+      return request.auth != null && 
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'superadmin';
+    }
+    
+    function isAdmin() {
+      return request.auth != null && 
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+    
+    function isUser() {
+      return request.auth != null && 
+             exists(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+    
+    // Pravidla pro kolekci users
+    match /users/{userId} {
+      // Superadmin může číst a upravovat všechny uživatele
+      allow read, write: if isSuperadmin();
+      
+      // Uživatel může číst svůj vlastní dokument
+      allow read: if request.auth.uid == userId;
+      
+      // Při registraci může uživatel vytvořit svůj dokument
+      allow create: if request.auth.uid == userId;
+    }
+    
+    // Pravidla pro kolekci apps
+    match /apps/{appId} {
+      // Superadmin má plný přístup ke všem aplikacím
+      allow read, write: if isSuperadmin();
+      
+      // Admin může číst a upravovat pouze aplikace, které mu byly přiřazeny
+      allow read, update: if isAdmin() && 
+                          resource.data.adminId == request.auth.uid;
+      
+      // Admin nemůže vytvářet ani mazat aplikace
+      allow create, delete: if false;
+    }
+    
+    // Pravidla pro kolekci notifications
+    match /notifications/{notificationId} {
+      // Superadmin může číst a vytvářet všechny notifikace
+      allow read, create: if isSuperadmin();
+      
+      // Admin může číst a vytvářet notifikace pouze pro své aplikace
+      allow read, create: if isAdmin() && 
+                          resource.data.appId in get(/databases/$(database)/documents/users/$(request.auth.uid)).data.assignedApps;
+    }
+    
+    // Pravidla pro kolekci app_users (budoucí uživatelé aplikací)
+    match /app_users/{userId} {
+      // Superadmin má plný přístup
+      allow read, write: if isSuperadmin();
+      
+      // Admin může číst uživatele svých aplikací
+      allow read: if isAdmin() && 
+                  resource.data.appId in get(/databases/$(database)/documents/users/$(request.auth.uid)).data.assignedApps;
+    }
+  }
+} 

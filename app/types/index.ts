@@ -15,6 +15,7 @@ export interface PageImage {
 
 // Typ pro stránku aplikace
 export interface AppPage {
+  id?: string;
   title: string;
   type: 'content' | 'webview';
   url?: string;
@@ -23,4 +24,86 @@ export interface AppPage {
   hiddenSelectors?: string[];
   imageUrl?: string;
   images?: PageImage[];
+}
+
+// Props pro PageEditModal
+export interface PageEditModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  pageEdit: AppPage & { blocks?: Block[] } | null;
+  setPageEdit: (page: AppPage & { blocks?: Block[] } | null) => void;
+  onSave: () => void;
+  pickerActive: boolean;
+  setPickerActive: (active: boolean) => void;
+}
+
+// Props pro PagePreview
+export interface PagePreviewProps {
+  page: AppPage & { blocks?: Block[] };
+  style?: React.CSSProperties;
+  className?: string;
+}
+
+// Props pro PageListItem
+export interface PageListItemProps {
+  page: AppPage;
+  idx: number;
+  onChange: (idx: number, field: string, value: string) => void;
+  onEdit: (idx: number) => void;
+  onMoveUp: (idx: number) => void;
+  onMoveDown: (idx: number) => void;
+  onDelete: (idx: number) => void;
+  isFirst: boolean;
+  isLast: boolean;
+}
+
+// Props pro AppMenuEditor
+export interface AppMenuEditorProps {
+  pages: AppPage[];
+  onChange: (pages: AppPage[]) => void;
+  onEdit: (idx: number) => void;
+}
+
+// Props pro RichTextToolbar
+export interface RichTextToolbarProps {
+  isBold: boolean;
+  isItalic: boolean;
+  isUnderline: boolean;
+  alignment: 'left' | 'center' | 'right' | 'justify';
+  fontSize: number;
+  fontColor: string;
+  backgroundColor: string;
+  onCommand: (command: string, value?: string) => void;
+  onInsertTable: () => void;
+  onInsertTableNoBorder: () => void;
+  onInsertLink: () => void;
+  onInsertImage: () => void;
+  onInsertHorizontalRule: () => void;
+  onInsertList: (ordered: boolean) => void;
+  onClearFormatting: () => void;
+  onAddTableRow: () => void;
+  onAddTableColumn: () => void;
+  tableRows: number;
+  setTableRows: (val: number) => void;
+  tableCols: number;
+  setTableCols: (val: number) => void;
+  showTableOptions: boolean;
+  setShowTableOptions: (show: boolean) => void;
+  showColorPicker: boolean;
+  setShowColorPicker: (show: boolean) => void;
+  showBgColorPicker: boolean;
+  setShowBgColorPicker: (show: boolean) => void;
+}
+
+// Props pro TableWidget
+export interface TableWidgetProps {
+  data: string[][];
+  onChange: (data: string[][]) => void;
+}
+
+// Props pro ImageBlock
+export interface ImageBlockProps {
+  block: Extract<Block, {type: 'image'}>;
+  onChange: (b: Block) => void;
+  onDelete: () => void;
 }
