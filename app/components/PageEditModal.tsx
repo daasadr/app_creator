@@ -82,6 +82,29 @@ const PageEditModal: React.FC<PageEditModalProps> = ({
                     <FormLabel>Skryté elementy (CSS selektory, oddělené čárkou)</FormLabel>
                     <Input value={pageEdit.hiddenSelectors?.join(', ') || ''} onChange={e => setPageEdit({ ...pageEdit, hiddenSelectors: e.target.value.split(',').map((s: string) => s.trim()) })} />
                   </FormControl>
+                  
+                  {/* Offline obsah pro webview */}
+                  <FormControl>
+                    <FormLabel>Offline obsah (HTML)</FormLabel>
+                    <Textarea 
+                      value={pageEdit.offlineContent || ''} 
+                      onChange={e => setPageEdit({ ...pageEdit, offlineContent: e.target.value })}
+                      placeholder="HTML obsah, který se zobrazí když není internet..."
+                      rows={6}
+                    />
+                    <Text fontSize="xs" color="gray.500" mt={1}>
+                      Tento obsah se zobrazí místo webview když aplikace není online.
+                    </Text>
+                  </FormControl>
+                  
+                  <FormControl>
+                    <FormLabel>Nadpis pro offline režim</FormLabel>
+                    <Input 
+                      value={pageEdit.offlineTitle || ''} 
+                      onChange={e => setPageEdit({ ...pageEdit, offlineTitle: e.target.value })}
+                      placeholder="Nadpis pro offline obsah (volitelné)"
+                    />
+                  </FormControl>
                   <Button size="sm" colorScheme={pickerActive ? 'red' : 'blue'} mb={2} onClick={() => setPickerActive(!pickerActive)}>
                     {pickerActive ? 'Ukončit výběr (kapátko)' : 'Vybrat elementy ke skrytí (kapátko)'}
                   </Button>

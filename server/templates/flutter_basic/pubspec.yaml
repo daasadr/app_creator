@@ -18,6 +18,8 @@ dependencies:
   cloud_firestore: ^5.5.0
   firebase_storage: ^12.3.3
   webview_flutter: ^4.7.0
+  connectivity_plus: ^6.0.5
+  cached_network_image: ^3.4.1
 
 dev_dependencies:
   flutter_test:

@@ -40,7 +40,7 @@ import {
   DeleteIcon,
   ViewIcon
 } from '@chakra-ui/icons'
-import { collection, getDocs, doc, updateDoc, deleteDoc } from 'firebase/firestore'
+import { collection, getDocs, doc, updateDoc, deleteDoc, addDoc } from 'firebase/firestore'
 import { db } from '../lib/firebase'
 import { useAuth } from '../lib/auth-context'
 import RegisterForm from './RegisterForm'
@@ -181,6 +181,49 @@ export default function SuperAdminDashboard() {
     router.push(`/apps/${appId}/edit`)
   }
 
+  const createNewApp = async () => {
+    try {
+      // Vytvoř novou aplikaci s výchozími hodnotami
+      const newApp = {
+        name: 'Nová aplikace',
+        description: 'Popis nové aplikace',
+        adminId: '',
+        createdAt: new Date(),
+        menu: [
+          {
+            id: Date.now().toString(),
+            title: 'Úvodní stránka',
+            type: 'content',
+            content: 'Vítejte v nové aplikaci!'
+          }
+        ],
+        settings: {
+          theme: 'light',
+          primaryColor: '#3182ce'
+        }
+      }
+
+      // Přidej do Firestore
+      const docRef = await addDoc(collection(db, 'apps'), newApp)
+      
+      toast({
+        title: 'Nová aplikace vytvořena',
+        status: 'success',
+        duration: 3000,
+      })
+
+      // Přesměruj na editor nové aplikace
+      router.push(`/apps/${docRef.id}/edit`)
+    } catch (error) {
+      console.error('Error creating app:', error)
+      toast({
+        title: 'Chyba při vytváření aplikace',
+        status: 'error',
+        duration: 3000,
+      })
+    }
+  }
+
   const adminUsers = users.filter(user => user.role === 'admin')
 
   if (loading) {
@@ -194,18 +237,29 @@ export default function SuperAdminDashboard() {
   return (
     <Box p={6}>
       <VStack spacing={6} align="stretch">
-        <HStack justify="space-between">
+        <HStack justify="space-between" wrap="wrap" spacing={4}>
           <Box>
             <Heading size="lg">Superadmin Dashboard</Heading>
             <Text color="gray.600">Správa všech aplikací a uživatelů</Text>
           </Box>
-          <Button
-            leftIcon={<AddIcon />}
-            colorScheme="blue"
-            onClick={onOpen}
-          >
-            Přidat uživatele
-          </Button>
+          <HStack spacing={3} flexWrap="wrap">
+            <Button
+              leftIcon={<AddIcon />}
+              colorScheme="blue"
+              onClick={onOpen}
+              size="md"
+            >
+              Přidat uživatele
+            </Button>
+            <Button
+              leftIcon={<AddIcon />}
+              colorScheme="green"
+              onClick={createNewApp}
+              size="md"
+            >
+              Přidat aplikaci
+            </Button>
+          </HStack>
         </HStack>
 
         {/* Statistiky */}

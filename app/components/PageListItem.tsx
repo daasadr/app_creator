@@ -65,6 +65,12 @@ const PageListItem: React.FC<PageListItemProps> = ({
         <Box mt={2} p={2} bg="white" borderRadius="md">
           <Text color="gray.600">URL: {page.url || <i>Žádná URL</i>}</Text>
           <Text color="gray.600">Skryté elementy: {page.hiddenSelectors?.join(', ') || <i>Žádné</i>}</Text>
+          {page.offlineContent && (
+            <Text color="green.600" fontSize="sm">✓ Offline obsah nastaven</Text>
+          )}
+          {page.offlineTitle && (
+            <Text color="green.600" fontSize="sm">✓ Offline nadpis: {page.offlineTitle}</Text>
+          )}
         </Box>
       )}
     </Box>

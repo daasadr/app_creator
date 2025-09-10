@@ -4,7 +4,7 @@ import React, { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import { doc, getDoc, updateDoc } from 'firebase/firestore'
 import { db } from '../../../lib/firebase'
-import { Box, Heading, Spinner, useToast, Tabs, TabList, TabPanels, Tab, TabPanel, Select } from '@chakra-ui/react'
+import { Box, Heading, Spinner, useToast, Tabs, TabList, TabPanels, Tab, TabPanel, Select, FormControl, FormLabel, Input, VStack } from '@chakra-ui/react'
 import AppMenuEditor from '../../../components/AppMenuEditor'
 import PageEditModal from '../../../components/PageEditModal'
 import type { AppPage } from '../../../types'
@@ -24,6 +24,7 @@ export default function AppEditPage() {
   const [generating, setGenerating] = useState(false)
   const [downloadUrl, setDownloadUrl] = useState<string | null>(null)
   const [generateError, setGenerateError] = useState<string | null>(null)
+  const [saved, setSaved] = useState(false)
 
   useEffect(() => {
     if (!appId) return
@@ -35,6 +36,7 @@ export default function AppEditPage() {
         if (docSnap.exists()) {
           setAppData(docSnap.data())
           setMenu(docSnap.data().menu || [])
+          setSaved(true) // Při načtení jsou data "uložená"
         } else {
           toast({ title: 'Aplikace nenalezena', status: 'error' })
         }
@@ -50,6 +52,7 @@ export default function AppEditPage() {
   const handleEditPage = (idx: number) => {
     setPageEdit(menu[idx])
     setModalOpen(true)
+    setSaved(false) // Po editaci stránky nejsou změny uložené
   }
 
   // Funkce pro generování unikátního id
@@ -57,7 +60,7 @@ export default function AppEditPage() {
     return Date.now().toString(36) + Math.random().toString(36).substr(2, 5)
   }
 
-  const handleSavePage = () => {
+  const handleSavePage = async () => {
     if (pageEdit) {
       // Najdi stránku podle id (nebo title, pokud není id)
       const idx = menu.findIndex(p => (p.id && pageEdit.id && p.id === pageEdit.id) || (!p.id && !pageEdit.id && p.title === pageEdit.title))
@@ -66,15 +69,34 @@ export default function AppEditPage() {
         newMenu[idx] = pageEdit
         setMenu(newMenu)
         setModalOpen(false)
+        setSaved(false) // Po úpravě stránky nejsou změny uložené
+        
+        // Ulož do Firestore
+        try {
+          await updateDoc(doc(db, 'apps', appId), { 
+            menu: newMenu,
+            lastUpdated: new Date().toISOString()
+          })
+          toast({ title: 'Stránka uložena', status: 'success' })
+        } catch (e) {
+          console.error('Save page error:', e)
+          toast({ title: 'Chyba při ukládání stránky', status: 'error' })
+        }
       }
     }
   }
 
   const handleSaveApp = async () => {
     try {
-      await updateDoc(doc(db, 'apps', appId), { menu })
+      await updateDoc(doc(db, 'apps', appId), { 
+        menu,
+        ...appData,
+        lastUpdated: new Date().toISOString()
+      })
+      setSaved(true)
       toast({ title: 'Aplikace uložena', status: 'success' })
     } catch (e) {
+      console.error('Save error:', e)
       toast({ title: 'Chyba při ukládání', status: 'error' })
     }
   }
@@ -87,10 +109,21 @@ export default function AppEditPage() {
       const config = {
         appName: appData.name,
         appDescription: appData.description,
+        packageName: appData.packageName || `com.example.${appData.name.toLowerCase().replace(/[^a-z0-9]/g, '_')}`,
+        appId: appId, // Přidáme appId pro Firestore načítání
         pages: menu,
         settings: appData.settings || {},
         // případně další pole dle potřeby
       }
+      
+      console.log('Sending config to backend:', config);
+      console.log('Menu structure:', menu);
+      console.log('Pages with blocks:', menu.map(page => ({
+        title: page.title,
+        blocks: page.blocks,
+        images: page.images
+      })));
+      
       const res = await fetch('/api/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -121,6 +154,38 @@ export default function AppEditPage() {
       <Box display={{ base: 'block', lg: 'flex' }} alignItems="flex-start" gap={8}>
         {/* Levý sloupec: editor menu */}
         <Box flex="2" minW={0}>
+          {/* Základní nastavení aplikace */}
+          <VStack spacing={4} align="stretch" mb={6} p={4} bg="gray.50" borderRadius="md">
+            <Heading size="md">Základní nastavení</Heading>
+            <FormControl>
+              <FormLabel>Název aplikace</FormLabel>
+              <Input 
+                value={appData.name || ''} 
+                onChange={e => setAppData({ ...appData, name: e.target.value })}
+                placeholder="Název aplikace"
+              />
+            </FormControl>
+            <FormControl>
+              <FormLabel>Popis aplikace</FormLabel>
+              <Input 
+                value={appData.description || ''} 
+                onChange={e => setAppData({ ...appData, description: e.target.value })}
+                placeholder="Popis aplikace"
+              />
+            </FormControl>
+            <FormControl>
+              <FormLabel>Package Name (Android)</FormLabel>
+              <Input 
+                value={appData.packageName || ''} 
+                onChange={e => setAppData({ ...appData, packageName: e.target.value })}
+                placeholder="com.example.hezka_aplikace"
+              />
+              <Box fontSize="sm" color="gray.600" mt={1}>
+                Jedinečný identifikátor pro Android aplikaci. Použije se pro instalaci a aktualizace.
+              </Box>
+            </FormControl>
+          </VStack>
+          
           <AppMenuEditor
             pages={menu}
             onChange={pages => {
@@ -131,8 +196,15 @@ export default function AppEditPage() {
             onEdit={handleEditPage}
           />
           <Box mt={4} display="flex" gap={4} alignItems="center">
-            <button onClick={handleSaveApp}>Uložit změny</button>
-            <button onClick={handleGenerate} disabled={generating} style={{ minWidth: 120 }}>
+            <button onClick={handleSaveApp} disabled={saved}>
+              {saved ? 'Změny uloženy' : 'Uložit změny'}
+            </button>
+            <button 
+              onClick={handleGenerate} 
+              disabled={generating || !saved} 
+              style={{ minWidth: 120 }}
+              title={!saved ? 'Nejprve uložte změny' : 'Generovat APK'}
+            >
               {generating ? 'Generuji...' : 'Generovat APK'}
             </button>
             {downloadUrl && (
@@ -202,27 +274,55 @@ export default function AppEditPage() {
                 </Box>
               )}
             </Box>
-            {/* Spodní lišta pro přepínání stránek */}
-            <Box display="flex" justifyContent="space-around" alignItems="center" h="56px" bg="gray.100" borderTop="1px solid #ccc" borderBottomRadius="32px">
-              {menu.map((page, idx) => (
-                <Box
-                  key={idx}
-                  as="button"
-                  onClick={() => setPreviewIdx(idx)}
-                  px={3}
-                  py={2}
-                  fontWeight={previewIdx === idx ? 'bold' : 'normal'}
-                  color={previewIdx === idx ? 'blue.600' : 'gray.700'}
-                  bg={previewIdx === idx ? 'gray.200' : 'transparent'}
-                  borderRadius="md"
-                  border={previewIdx === idx ? '2px solid #3182ce' : 'none'}
-                  transition="all 0.2s"
-                  cursor="pointer"
-                  fontSize="sm"
-                >
-                  {page.title || `Stránka ${idx+1}`}
-                </Box>
-              ))}
+            {/* Spodní lišta - simulace skutečného menu aplikace */}
+            <Box display="flex" justifyContent="space-around" alignItems="center" h="56px" bg="purple.200" borderTop="1px solid #ccc" borderBottomRadius="32px">
+              {/* Zpět tlačítko */}
+              <Box
+                display="flex"
+                flexDirection="column"
+                alignItems="center"
+                px={2}
+                py={1}
+                cursor="pointer"
+                color="gray.700"
+                fontSize="xs"
+              >
+                <Box fontSize="lg">←</Box>
+                <Box>Zpět</Box>
+              </Box>
+              
+              {/* Domů tlačítko - aktivní */}
+              <Box
+                display="flex"
+                flexDirection="column"
+                alignItems="center"
+                px={2}
+                py={1}
+                cursor="pointer"
+                color="purple.700"
+                fontSize="xs"
+                bg="purple.300"
+                borderRadius="md"
+                fontWeight="bold"
+              >
+                <Box fontSize="lg">🏠</Box>
+                <Box>Domů</Box>
+              </Box>
+              
+              {/* Menu tlačítko */}
+              <Box
+                display="flex"
+                flexDirection="column"
+                alignItems="center"
+                px={2}
+                py={1}
+                cursor="pointer"
+                color="gray.700"
+                fontSize="xs"
+              >
+                <Box fontSize="lg">☰</Box>
+                <Box>Menu</Box>
+              </Box>
             </Box>
             <Box position="absolute" top={0} left={0} w="100%" h="32px" bg="gray.200" borderBottom="1px solid #ccc" borderTopRadius="32px" />
           </Box>

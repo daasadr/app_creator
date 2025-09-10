@@ -48,7 +48,7 @@ async function updateAppContent(buildDir, config) {
     const initDataCall = `
   // Initialize with generator data
   void initializeWithGeneratorData() {
-    initializeAppData(${JSON.stringify(config.pages, null, 2)}, ${JSON.stringify(config.settings, null, 2)});
+    initializeAppData(${JSON.stringify(config.pages, null, 2)}, ${JSON.stringify(config.settings, null, 2)}, ${JSON.stringify(config.appId || null)});
   }`;
     
     // Najdi konec třídy a přidej metodu před poslední závorku
@@ -65,17 +65,8 @@ async function updateAppContent(buildDir, config) {
   const mainPath = path.join(buildDir, 'lib', 'main.dart');
   let mainContent = await fs.readFile(mainPath, 'utf8');
   
-  // Najdi místo kde se vytváří AppController a přidej inicializaci
-  if (!mainContent.includes('initializeWithGeneratorData')) {
-    mainContent = mainContent.replace(
-      /(ChangeNotifierProvider\(create: \(_\) => AppController\(\)\))/,
-      `ChangeNotifierProvider(create: (_) {
-        final controller = AppController();
-        controller.initializeWithGeneratorData();
-        return controller;
-      })`
-    );
-  }
+  // Odstraníme starý způsob inicializace - nový je v main.dart
+  // main.dart už má vlastní inicializaci s Firebase a appId
   
   await fs.writeFile(mainPath, mainContent);
   console.log('Main.dart updated with controller initialization');
@@ -85,6 +76,10 @@ async function updateAppContent(buildDir, config) {
   
   // Zpracování stránek - zajištění kompatibility
   const processedPages = config.pages.map(page => {
+    console.log(`Processing page: ${page.title || 'Untitled'}`);
+    console.log(`  Original blocks:`, page.blocks ? page.blocks.length : 'none');
+    console.log(`  Original images:`, page.images ? page.images.length : 'none');
+    
     const processedPage = { ...page };
     
     // Zajištění kompatibility s richContent
@@ -92,30 +87,102 @@ async function updateAppContent(buildDir, config) {
       processedPage.content = processedPage.richContent;
     }
     
-    // Zajištění kompatibility s images
+    // DŮLEŽITÉ: Zpracování pole blocks - obrázky i text
+    if (processedPage.blocks && Array.isArray(processedPage.blocks)) {
+      // Najdi všechny obrázky v blocích
+      const imageBlocks = processedPage.blocks.filter(block => block.type === 'image');
+      const textBlocks = processedPage.blocks.filter(block => block.type === 'text');
+      
+      // Zpracuj text bloky - slouč je do content
+      if (textBlocks.length > 0) {
+        const textContent = textBlocks.map(block => block.content || '').join('\n\n');
+        if (textContent.trim()) {
+          // Přidej text k existujícímu content
+          processedPage.content = (processedPage.content || '') + (processedPage.content ? '\n\n' : '') + textContent;
+          console.log(`  Added text from ${textBlocks.length} text blocks`);
+        }
+      }
+      
+      // Zpracuj obrázky z bloků
+      if (imageBlocks.length > 0) {
+        // Přidej obrázky z bloků do pole images s zachováním velikostí
+        const blockImages = imageBlocks.map(block => ({
+          url: block.url,
+          alt: block.alt || '',
+          position: block.align || 'center',
+          width: block.width || 300, // Zachovej nastavenou velikost
+          margin: 10
+        }));
+        
+        // Slouč s existujícími obrázky, ale vyhni se duplikaci
+        if (processedPage.images && Array.isArray(processedPage.images)) {
+          // Najdi obrázky, které ještě nejsou v images poli
+          const existingUrls = processedPage.images.map(img => img.url);
+          const newBlockImages = blockImages.filter(blockImg => !existingUrls.includes(blockImg.url));
+          processedPage.images = [...processedPage.images, ...newBlockImages];
+          console.log(`  Added ${newBlockImages.length} new images from blocks (${blockImages.length - newBlockImages.length} duplicates skipped)`);
+        } else {
+          processedPage.images = blockImages;
+        }
+        
+        console.log(`  Extracted ${imageBlocks.length} images from blocks:`, blockImages.map(img => `${img.url} (width: ${img.width})`));
+      }
+    }
+    
+    // Zajištění kompatibility s images - zachovej velikosti
     if (processedPage.images && processedPage.images.length > 0 && !processedPage.imageUrl) {
       processedPage.imageUrl = processedPage.images[0].url;
     }
     
-    // Zajištění kompatibility se starým způsobem
+    // Zajištění kompatibility se starým způsobem - zachovej velikosti
     if (processedPage.imageUrl && (!processedPage.images || processedPage.images.length === 0)) {
       processedPage.images = [{
         url: processedPage.imageUrl,
         alt: '',
         position: 'center',
-        width: 100,
+        width: processedPage.imageWidth || 100, // Zachovej nastavenou velikost
         margin: 10
       }];
     }
+    
+    // Zachovej velikosti obrázků z editoru
+    if (processedPage.images && Array.isArray(processedPage.images)) {
+      processedPage.images = processedPage.images.map(img => ({
+        ...img,
+        width: img.width || 300, // Zachovej nastavenou velikost
+        position: img.position || 'center',
+        margin: img.margin || 10
+      }));
+    }
+    
+    console.log(`  Final images count:`, processedPage.images ? processedPage.images.length : 'none');
+    console.log(`  Final imageUrl:`, processedPage.imageUrl || 'none');
+    console.log(`  Offline content:`, processedPage.offlineContent ? 'present' : 'missing');
+    console.log(`  Offline title:`, processedPage.offlineTitle || 'none');
     
     return processedPage;
   });
   
   const configData = {
     appName: config.appName,
+    appId: config.appId, // Přidáme appId pro Firestore načítání
     pages: processedPages,
     settings: config.settings
   };
+  
+  console.log('Final config.json structure:');
+  console.log('  App name:', configData.appName);
+  console.log('  Pages count:', configData.pages.length);
+  configData.pages.forEach((page, idx) => {
+    console.log(`  Page ${idx + 1}: ${page.title || 'Untitled'}`);
+    console.log(`    Images: ${page.images ? page.images.length : 0}`);
+    console.log(`    Blocks: ${page.blocks ? page.blocks.length : 0}`);
+    console.log(`    Offline content: ${page.offlineContent ? 'present' : 'missing'}`);
+    if (page.images && page.images.length > 0) {
+      console.log(`    Image URLs:`, page.images.map(img => img.url));
+    }
+  });
+  
   await fs.writeFile(configPath, JSON.stringify(configData, null, 2));
   console.log('Assets config.json updated with rich content and images support');
 }

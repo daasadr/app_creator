@@ -24,6 +24,21 @@ export interface AppPage {
   hiddenSelectors?: string[];
   imageUrl?: string;
   images?: PageImage[];
+  // Offline obsah pro webview stránky
+  offlineContent?: string;
+  offlineTitle?: string;
+}
+
+// Typ pro aplikaci
+export interface App {
+  id?: string;
+  name: string;
+  description?: string;
+  packageName?: string;
+  menu?: AppPage[];
+  settings?: any;
+  createdAt?: string;
+  lastUpdated?: string;
 }
 
 // Props pro PageEditModal
