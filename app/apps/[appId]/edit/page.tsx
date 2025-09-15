@@ -144,7 +144,7 @@ export default function AppEditPage() {
   const handleEditPage = (idx: number) => {
     setPageEdit(menu[idx])
     setModalOpen(true)
-    setSaved(false) // Po editaci stránky nejsou změny uložené
+    // Automatické ukládání se postará o uložení změn
   }
 
   // Funkce pro generování unikátního id

@@ -2,6 +2,7 @@ const fs = require('fs-extra');
 const path = require('path');
 const { execSync } = require('child_process');
 const { v4: uuidv4 } = require('uuid');
+const admin = require('firebase-admin');
 const { initializeApp, applicationDefault } = require('firebase-admin/app');
 const { getFirestore } = require('firebase-admin/firestore');
 let adminInitialized = false;
@@ -352,14 +353,32 @@ const changeMainActivityPackage = async (buildDir, packageName) => {
 
 async function getLatestAppData(appId) {
   if (!adminInitialized) {
-    initializeApp({ credential: applicationDefault() });
-    adminInitialized = true;
+    try {
+      // Zkus načíst service account key
+      const serviceAccountPath = path.join(__dirname, 'service-account-key.json');
+      if (fs.existsSync(serviceAccountPath)) {
+        const serviceAccount = require(serviceAccountPath);
+        initializeApp({ credential: admin.credential.cert(serviceAccount) });
+      } else {
+        // Fallback na application default
+        initializeApp({ credential: applicationDefault() });
+      }
+      adminInitialized = true;
+    } catch (error) {
+      console.log('Firebase Admin initialization failed, skipping Firestore data loading:', error.message);
+      return null;
+    }
   }
-  const db = getFirestore();
-  const docRef = db.collection('apps').doc(appId);
-  const docSnap = await docRef.get();
-  if (docSnap.exists) {
-    return docSnap.data();
+  
+  try {
+    const db = getFirestore();
+    const docRef = db.collection('apps').doc(appId);
+    const docSnap = await docRef.get();
+    if (docSnap.exists) {
+      return docSnap.data();
+    }
+  } catch (error) {
+    console.log('Firestore data loading failed:', error.message);
   }
   return null;
 }
