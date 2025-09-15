@@ -327,14 +327,14 @@ export default function AppEditPage() {
             onEdit={handleEditPage}
           />
           <Box mt={4} display="flex" gap={4} alignItems="center">
-            <button onClick={handleSaveApp} disabled={saved}>
-              {saved ? 'Změny uloženy' : 'Uložit změny'}
+            <button onClick={handleSaveApp} disabled={saveStatus === 'saving'}>
+              {saveStatus === 'saved' ? 'Změny uloženy' : 'Uložit změny'}
             </button>
             <button 
               onClick={handleGenerate} 
-              disabled={generating || !saved} 
+              disabled={generating || saveStatus === 'error' || saveStatus === null} 
               style={{ minWidth: 120 }}
-              title={!saved ? 'Nejprve uložte změny' : 'Generovat APK'}
+              title={saveStatus === 'error' || saveStatus === null ? 'Nejprve uložte změny' : 'Generovat APK'}
             >
               {generating ? 'Generuji...' : 'Generovat APK'}
             </button>
