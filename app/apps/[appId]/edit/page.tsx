@@ -24,7 +24,48 @@ export default function AppEditPage() {
   const [generating, setGenerating] = useState(false)
   const [downloadUrl, setDownloadUrl] = useState<string | null>(null)
   const [generateError, setGenerateError] = useState<string | null>(null)
-  const [saved, setSaved] = useState(false)
+  const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'error' | null>(null)
+  const [saveRetryCount, setSaveRetryCount] = useState(0)
+
+  // Pomocná funkce pro odstranění všech undefined hodnot rekurzivně
+  function removeUndefined(obj: any): any {
+    if (Array.isArray(obj)) {
+      return obj.map(removeUndefined).filter(v => v !== undefined)
+    } else if (obj && typeof obj === 'object') {
+      return Object.fromEntries(
+        Object.entries(obj)
+          .filter(([_, v]) => v !== undefined)
+          .map(([k, v]) => [k, removeUndefined(v)])
+      )
+    }
+    return obj
+  }
+
+  function serializeMenu(menu: AppPage[]): any[] {
+    return menu.map(page => removeUndefined({
+      ...page,
+      blocks: Array.isArray(page.blocks)
+        ? page.blocks.map(block =>
+            block.type === 'table' && Array.isArray(block.data)
+              ? { ...block, data: JSON.stringify(block.data) }
+              : block
+          )
+        : page.blocks,
+    }))
+  }
+
+  function deserializeMenu(menu: any[]): AppPage[] {
+    return menu.map(page => ({
+      ...page,
+      blocks: Array.isArray(page.blocks)
+        ? page.blocks.map(block =>
+            block.type === 'table' && typeof block.data === 'string'
+              ? { ...block, data: JSON.parse(block.data) }
+              : block
+          )
+        : page.blocks,
+    }))
+  }
 
   useEffect(() => {
     if (!appId) return
@@ -34,9 +75,26 @@ export default function AppEditPage() {
         const docRef = doc(db, 'apps', appId)
         const docSnap = await getDoc(docRef)
         if (docSnap.exists()) {
-          setAppData(docSnap.data())
-          setMenu(docSnap.data().menu || [])
-          setSaved(true) // Při načtení jsou data "uložená"
+          const data = docSnap.data()
+          let loadedMenu = deserializeMenu(data.menu || [])
+
+          // MIGRACE: Pokud existuje globální content/images, promítni je do první stránky menu
+          if (data.content || data.images) {
+            if (loadedMenu.length === 0) loadedMenu = [{}]
+            if (data.content && !loadedMenu[0].content) loadedMenu[0].content = data.content
+            if (data.images && (!loadedMenu[0].images || loadedMenu[0].images.length === 0)) loadedMenu[0].images = data.images
+          }
+
+          // MIGRACE: Pokud některá stránka má obrázky ve starém formátu (imageUrl), převeď na images pole
+          loadedMenu = loadedMenu.map(page => {
+            if (page.imageUrl && (!page.images || page.images.length === 0)) {
+              return { ...page, images: [{ url: page.imageUrl, alt: '', position: 'center', width: 100, margin: 10 }] }
+            }
+            return page
+          })
+
+          setAppData(data)
+          setMenu(loadedMenu)
         } else {
           toast({ title: 'Aplikace nenalezena', status: 'error' })
         }
@@ -48,6 +106,40 @@ export default function AppEditPage() {
     }
     fetchApp()
   }, [appId])
+
+  // Automatické ukládání menu do Firestore s retry logikou
+  useEffect(() => {
+    if (!loading && appId) {
+      const saveTimeout = setTimeout(async () => {
+        setSaveStatus('saving')
+        const saveMenu = async (retryCount = 0) => {
+          try {
+            await updateDoc(doc(db, 'apps', appId), { menu: serializeMenu(menu) })
+            setSaveStatus('saved')
+            setSaveRetryCount(0)
+            setTimeout(() => setSaveStatus(null), 3000)
+          } catch (e) {
+            console.error('Save error:', e)
+            if (retryCount < 3) {
+              setTimeout(() => saveMenu(retryCount + 1), 2000)
+              setSaveRetryCount(retryCount + 1)
+            } else {
+              setSaveStatus('error')
+              setSaveRetryCount(0)
+              toast({ 
+                title: 'Chyba při automatickém ukládání', 
+                description: 'Zkuste uložit ručně nebo obnovit stránku',
+                status: 'error',
+                duration: 5000
+              })
+            }
+          }
+        }
+        saveMenu()
+      }, 2000)
+      return () => clearTimeout(saveTimeout)
+    }
+  }, [menu, appId, loading])
 
   const handleEditPage = (idx: number) => {
     setPageEdit(menu[idx])
@@ -69,77 +161,98 @@ export default function AppEditPage() {
         newMenu[idx] = pageEdit
         setMenu(newMenu)
         setModalOpen(false)
-        setSaved(false) // Po úpravě stránky nejsou změny uložené
-        
-        // Ulož do Firestore
-        try {
-          await updateDoc(doc(db, 'apps', appId), { 
-            menu: newMenu,
-            lastUpdated: new Date().toISOString()
-          })
-          toast({ title: 'Stránka uložena', status: 'success' })
-        } catch (e) {
-          console.error('Save page error:', e)
-          toast({ title: 'Chyba při ukládání stránky', status: 'error' })
-        }
+        // Automatické ukládání se postará o uložení do Firestore
       }
     }
   }
 
   const handleSaveApp = async () => {
     try {
-      await updateDoc(doc(db, 'apps', appId), { 
-        menu,
-        ...appData,
-        lastUpdated: new Date().toISOString()
-      })
-      setSaved(true)
+      setSaveStatus('saving')
+      await updateDoc(doc(db, 'apps', appId), { menu: serializeMenu(menu) })
+      setSaveStatus('saved')
+      setSaveRetryCount(0)
       toast({ title: 'Aplikace uložena', status: 'success' })
+      setTimeout(() => setSaveStatus(null), 3000)
     } catch (e) {
       console.error('Save error:', e)
-      toast({ title: 'Chyba při ukládání', status: 'error' })
+      setSaveStatus('error')
+      setSaveRetryCount(0)
+      toast({ 
+        title: 'Chyba při ukládání', 
+        description: e instanceof Error ? e.message : 'Neznámá chyba',
+        status: 'error',
+        duration: 5000
+      })
     }
   }
 
   const handleGenerate = async () => {
+    if (saveStatus === 'error') {
+      toast({ title: 'Nelze generovat', description: 'Nejprve opravte chyby při ukládání!', status: 'warning' })
+      return
+    }
+    if (saveStatus === null) {
+      toast({ title: 'Nelze generovat', description: 'Nejprve uložte všechny změny!', status: 'warning' })
+      return
+    }
     setGenerating(true)
     setDownloadUrl(null)
     setGenerateError(null)
     try {
-      const config = {
-        appName: appData.name,
-        appDescription: appData.description,
-        packageName: appData.packageName || `com.example.${appData.name.toLowerCase().replace(/[^a-z0-9]/g, '_')}`,
-        appId: appId, // Přidáme appId pro Firestore načítání
-        pages: menu,
-        settings: appData.settings || {},
-        // případně další pole dle potřeby
+      // VŽDY načti aktuální data z Firestore těsně před generováním
+      const docRef = doc(db, 'apps', appId)
+      const docSnap = await getDoc(docRef)
+      let latestMenu = menu
+      let latestAppData = appData
+      if (docSnap.exists()) {
+        latestAppData = docSnap.data()
+        latestMenu = docSnap.data().menu || []
       }
       
-      console.log('Sending config to backend:', config);
-      console.log('Menu structure:', menu);
-      console.log('Pages with blocks:', menu.map(page => ({
-        title: page.title,
-        blocks: page.blocks,
-        images: page.images
-      })));
+      // Kontrola, zda jsou data platná
+      if (!latestMenu || latestMenu.length === 0) {
+        throw new Error('Aplikace nemá žádné stránky. Přidejte alespoň jednu stránku.')
+      }
+      
+      const config = {
+        appId: appId, // Přidáno: appId pro správné propojení s Firestore
+        appName: latestAppData.name,
+        appDescription: latestAppData.description,
+        packageName: latestAppData.packageName || `com.example.${latestAppData.name.toLowerCase().replace(/[^a-z0-9]/g, '_')}`,
+        pages: latestMenu,
+        settings: latestAppData.settings || {},
+      }
+      
+      toast({ title: 'Generuji aplikaci...', status: 'info' })
       
       const res = await fetch('/api/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(config)
       })
+      
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}: ${res.statusText}`)
+      }
+      
       const data = await res.json()
       if (data.success && data.downloadUrl) {
         setDownloadUrl(data.downloadUrl)
-        toast({ title: 'APK vygenerováno', status: 'success' })
+        toast({ title: 'APK vygenerováno úspěšně!', status: 'success' })
       } else {
         setGenerateError(data.error || 'Chyba při generování')
         toast({ title: 'Chyba při generování', description: data.error, status: 'error' })
       }
     } catch (e: any) {
+      console.error('Generate error:', e)
       setGenerateError(e.message)
-      toast({ title: 'Chyba při generování', description: e.message, status: 'error' })
+      toast({ 
+        title: 'Chyba při generování', 
+        description: e.message, 
+        status: 'error',
+        duration: 5000
+      })
     } finally {
       setGenerating(false)
     }
@@ -151,6 +264,24 @@ export default function AppEditPage() {
   return (
     <Box p={6}>
       <Heading size="lg" mb={4}>Editor aplikace: {appData.name}</Heading>
+      {/* Stav uložení */}
+      {saveStatus === 'saving' && (
+        <Box color="blue.500" mb={2}>
+          Ukládám změny... {saveRetryCount > 0 && `(pokus ${saveRetryCount}/3)`}
+        </Box>
+      )}
+      {saveStatus === 'saved' && <Box color="green.600" mb={2}>✓ Změny uloženy</Box>}
+      {saveStatus === 'error' && (
+        <Box color="red.500" mb={2}>
+          ❌ Chyba při ukládání změn! 
+          <button 
+            onClick={handleSaveApp} 
+            style={{ marginLeft: 10, padding: '4px 8px', background: '#e53e3e', color: 'white', border: 'none', borderRadius: 4, cursor: 'pointer' }}
+          >
+            Zkusit znovu
+          </button>
+        </Box>
+      )}
       <Box display={{ base: 'block', lg: 'flex' }} alignItems="flex-start" gap={8}>
         {/* Levý sloupec: editor menu */}
         <Box flex="2" minW={0}>
@@ -243,26 +374,46 @@ export default function AppEditPage() {
               {menu[previewIdx] && (
                 <Box>
                   <Heading size="md" mb={2}>{menu[previewIdx].title}</Heading>
-                  {/* Bloky obsahu nebo fallback na content */}
-                  {Array.isArray((menu[previewIdx] as any)?.blocks) && (menu[previewIdx] as any).blocks.length > 0 ? (
-                    (menu[previewIdx] as any).blocks.map((block: any, bidx: number) => {
-                      if (block.type === 'text') return <Box key={bidx} mb={2}>{block.content}</Box>
-                      if (block.type === 'table') return (
-                        <Box key={bidx} as="table" border="1px solid #ccc" borderRadius="md" my={2} w="100%" style={{ borderCollapse: 'collapse' }}>
-                          <tbody>{block.data.map((row, i) => <tr key={i}>{row.map((cell, j) => <td key={j} style={{ border: '1px solid #ccc', padding: 4 }}>{cell}</td>)}</tr>)}</tbody>
-                        </Box>
-                      )
-                      if (block.type === 'image') return (
-                        <Box key={bidx} my={2} textAlign={block.align === 'left' || block.align === 'right' || block.align === 'center' ? block.align : 'center'}>
-                          <img src={block.url} alt={block.alt || ''} style={{ width: block.width ? block.width + 'px' : '300px', maxWidth: '100%', borderRadius: 8, display: 'block', margin: block.align === 'center' ? '0 auto' : undefined, float: block.align === 'left' ? 'left' : block.align === 'right' ? 'right' : undefined }} />
-                        </Box>
-                      )
-                      return null
-                    })
-                  ) : menu[previewIdx].content ? (
+                  {/* Zobraz text z content nebo z blocks */}
+                  {menu[previewIdx].content ? (
                     <Box color="gray.600">{menu[previewIdx].content}</Box>
+                  ) : Array.isArray(menu[previewIdx].blocks) && menu[previewIdx].blocks.find(b => b.type === 'text') ? (
+                    <Box color="gray.600">{menu[previewIdx].blocks.find(b => b.type === 'text').content}</Box>
                   ) : (
                     <Box color="gray.400" fontStyle="italic">Žádný obsah</Box>
+                  )}
+                  {/* Obrázky z images */}
+                  {menu[previewIdx].images && menu[previewIdx].images.length > 0 && (
+                    <VStack spacing={2} mb={3} align="stretch">
+                      {menu[previewIdx].images.map((img, idx) => (
+                        <Box 
+                          key={idx} 
+                          textAlign={img.position === 'center' ? 'center' : img.position === 'right' ? 'right' : 'left'}
+                        >
+                          <img
+                            src={img.url}
+                            alt={img.alt || 'Obrázek'}
+                            style={{
+                              width: img.width ? `${img.width}%` : '100%',
+                              maxWidth: '100%',
+                              height: 'auto',
+                              margin: `${img.margin || 10}px 0`,
+                              borderRadius: '8px'
+                            }}
+                          />
+                        </Box>
+                      ))}
+                    </VStack>
+                  )}
+                  {/* Obrázky z blocks */}
+                  {Array.isArray(menu[previewIdx].blocks) && menu[previewIdx].blocks.filter(b => b.type === 'image').length > 0 && (
+                    <VStack spacing={2} mb={3} align="stretch">
+                      {menu[previewIdx].blocks.filter(b => b.type === 'image').map((block, idx) => (
+                        <Box key={100+idx} my={2} textAlign={block.align === 'left' || block.align === 'right' || block.align === 'center' ? block.align : 'center'}>
+                          <img src={block.url} alt={block.alt || ''} style={{ width: block.width ? block.width + 'px' : '300px', maxWidth: '100%', borderRadius: 8, display: 'block', margin: block.align === 'center' ? '0 auto' : undefined, float: block.align === 'left' ? 'left' : block.align === 'right' ? 'right' : undefined }} />
+                        </Box>
+                      ))}
+                    </VStack>
                   )}
                   {/* WebView stránka */}
                   {menu[previewIdx].type === 'webview' && menu[previewIdx].url && (

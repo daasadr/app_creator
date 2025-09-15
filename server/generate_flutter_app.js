@@ -2,6 +2,9 @@ const fs = require('fs-extra');
 const path = require('path');
 const { execSync } = require('child_process');
 const { v4: uuidv4 } = require('uuid');
+const { initializeApp, applicationDefault } = require('firebase-admin/app');
+const { getFirestore } = require('firebase-admin/firestore');
+let adminInitialized = false;
 
 // Správné cesty k adresářům
 const TEMPLATE_DIR = path.join(__dirname, 'templates', 'flutter_basic');
@@ -347,8 +350,32 @@ const changeMainActivityPackage = async (buildDir, packageName) => {
   console.log(`MainActivity úspěšně přesunuta do ${packageName}`);
 };
 
+async function getLatestAppData(appId) {
+  if (!adminInitialized) {
+    initializeApp({ credential: applicationDefault() });
+    adminInitialized = true;
+  }
+  const db = getFirestore();
+  const docRef = db.collection('apps').doc(appId);
+  const docSnap = await docRef.get();
+  if (docSnap.exists) {
+    return docSnap.data();
+  }
+  return null;
+}
+
 // Hlavní funkce pro generování aplikace
 async function generateApp(config) {
+  // Pokud je k dispozici appId, načti aktuální data z Firestore
+  if (config.appId) {
+    const latest = await getLatestAppData(config.appId);
+    if (latest && latest.menu) {
+      config.pages = latest.menu;
+      config.settings = latest.settings || {};
+      config.appName = latest.name || config.appName;
+      config.appDescription = latest.description || config.appDescription;
+    }
+  }
   try {
     console.log('Starting app generation...');
     

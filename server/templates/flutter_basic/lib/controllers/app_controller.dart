@@ -42,37 +42,83 @@ class AppController extends ChangeNotifier {
     loadAppContent();
   }
 
-  // Load app content - try Firestore first, then fallback to assets
+  // Load app content from Firestore (cloud) with fallback to assets
   Future<void> loadAppContent() async {
     _setLoading(true);
     try {
-      // Try to load from Firestore first
-      if (_appId != null && _firestore != null) {
+      // 1. Načti appId z assetů
+      final configString = await rootBundle.loadString('assets/config.json');
+      final config = json.decode(configString);
+      final appId = config['appId'];
+      print('Loading app content for appId: $appId');
+      bool loadedFromFirestore = false;
+      
+      if (appId != null) {
         try {
-          await _loadFromFirestore();
-          print('Content loaded from Firestore');
-          return;
-        } catch (e) {
-          print('Firestore load failed, trying local storage: $e');
-
-          // Try local storage first
-          try {
-            await loadFromLocal();
-            if (_pages.isNotEmpty) {
-              print('Content loaded from local storage');
-              return;
+          print('Attempting to load from Firestore...');
+          final doc = await FirebaseFirestore.instance.collection('apps').doc(appId).get();
+          if (doc.exists) {
+            final data = doc.data();
+            print('Firestore data loaded successfully');
+            print('Menu data: ${data?['menu']?.length ?? 0} pages');
+            _pages = List<Map<String, dynamic>>.from(data?['menu'] ?? []);
+            _appSettings = Map<String, dynamic>.from(data?['settings'] ?? {});
+            loadedFromFirestore = true;
+            notifyListeners();
+            print('Data loaded from Firestore: ${_pages.length} pages');
+            
+            // Debug: vypiš obsah každé stránky
+            for (int i = 0; i < _pages.length; i++) {
+              final page = _pages[i];
+              print('=== PAGE $i DEBUG ===');
+              print('Title: ${page['title']}');
+              print('Content: ${page['content']}');
+              print('Images: ${page['images']}');
+              print('Images length: ${page['images']?.length ?? 0}');
+              if (page['images'] != null) {
+                for (int j = 0; j < page['images'].length; j++) {
+                  print('  Image $j: ${page['images'][j]}');
+                }
+              }
+              print('Blocks: ${page['blocks']}');
+              print('Blocks length: ${page['blocks']?.length ?? 0}');
+              if (page['blocks'] != null) {
+                for (int j = 0; j < page['blocks'].length; j++) {
+                  print('  Block $j: ${page['blocks'][j]}');
+                }
+              }
+              print('==================');
             }
-          } catch (localError) {
-            print('Local storage load failed: $localError');
+          } else {
+            print('Firestore document does not exist for appId: $appId');
           }
+        } catch (e) {
+          print('Firestore load error: $e');
         }
       }
-
-      // Fallback to assets
-      await _loadFromAssets();
-      print('Content loaded from assets');
+      
+      // 2. Pokud Firestore selže, načti z assetů
+      if (!loadedFromFirestore) {
+        print('Loading from assets as fallback...');
+        _pages = List<Map<String, dynamic>>.from(config['pages'] ?? []);
+        _appSettings = Map<String, dynamic>.from(config['settings'] ?? {});
+        notifyListeners();
+        print('Data loaded from assets: ${_pages.length} pages');
+      }
+      
+      // 3. Vymaž lokální cache, aby se nepoužívala stará data
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.remove('app_pages');
+        await prefs.remove('app_settings');
+        print('Local cache cleared');
+      } catch (e) {
+        print('Error clearing cache: $e');
+      }
+      
     } catch (e) {
       _setError('Failed to load app content: $e');
+      print('Error in loadAppContent: $e');
     }
     _setLoading(false);
   }
