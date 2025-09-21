@@ -215,8 +215,8 @@ async function updateAppConfig(buildDir, config) {
   const packageName = config.packageName || 'com.example.flutter_basic';
 
   // Zkopíruj správný google-services.json pokud existuje
-  // Mapuj package name na adresář (odstraň podtržítka)
-  const packageDir = packageName.replace(/_/g, '');
+  // Použij package name přímo jako název adresáře
+  const packageDir = packageName;
   const googleServicesPath = path.join(__dirname, 'google-services', packageDir, 'google-services.json');
   const destPath = path.join(buildDir, 'android', 'app', 'google-services.json');
   const wrongSrcPath = path.join(buildDir, 'android', 'app', 'src', 'google-services.json');

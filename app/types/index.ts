@@ -1,8 +1,47 @@
+// Typ pro stylování bloků
+export interface BlockStyle {
+  padding?: number;
+  margin?: number;
+  borderRadius?: number;
+  borderWidth?: number;
+  borderColor?: string;
+  borderStyle?: 'solid' | 'dashed' | 'dotted' | 'none';
+  backgroundColor?: string;
+  textColor?: string;
+  fontSize?: number;
+  fontWeight?: 'normal' | 'bold' | 'lighter' | 'bolder' | number;
+  textAlign?: 'left' | 'center' | 'right' | 'justify';
+  boxShadow?: string;
+  autoProportions?: boolean;
+  plasticEffect?: boolean;
+}
+
+// Typ pro kombinované bloky
+export interface MixedBlockContent {
+  text?: string;
+  image?: {
+    url: string;
+    alt?: string;
+    align?: 'left'|'center'|'right'|'full';
+    width?: number;
+  };
+  button?: {
+    text: string;
+    url?: string;
+    action?: string;
+  };
+  table?: {
+    data: string[][];
+  };
+}
+
 // Typ pro bloky v editoru
 export type Block =
-  | { type: 'text', content: string }
-  | { type: 'table', data: string[][] }
-  | { type: 'image', url: string, alt?: string, align?: 'left'|'center'|'right'|'full', width?: number }
+  | { type: 'text', content: string, style?: BlockStyle }
+  | { type: 'table', data: string[][], style?: BlockStyle }
+  | { type: 'image', url: string, alt?: string, align?: 'left'|'center'|'right'|'full', width?: number, style?: BlockStyle }
+  | { type: 'button', text: string, url?: string, action?: string, style?: BlockStyle }
+  | { type: 'mixed', content: MixedBlockContent, style?: BlockStyle }
 
 // Typ pro obrázek stránky
 export interface PageImage {
