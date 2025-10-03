@@ -82,6 +82,28 @@ function MixedBlock({ block, onChange, onDelete }: MixedBlockProps) {
                 w={20}
               />
             </HStack>
+            <Box>
+              <Text fontSize="xs" color="gray.500" mb={1}>Nebo nahraj z PC:</Text>
+              <input
+                type="file"
+                accept="image/*"
+                onChange={(e) => {
+                  const file = e.target.files?.[0]
+                  if (file) {
+                    const reader = new FileReader()
+                    reader.onload = (event) => {
+                      updateImage({ 
+                        ...content.image, 
+                        url: event.target?.result as string,
+                        alt: file.name
+                      })
+                    }
+                    reader.readAsDataURL(file)
+                  }
+                }}
+                style={{ fontSize: '12px' }}
+              />
+            </Box>
             {content.image?.url && (
               <Box textAlign="center">
                 <img 
@@ -152,22 +174,127 @@ function MixedBlock({ block, onChange, onDelete }: MixedBlockProps) {
                           key={j} 
                           style={{ 
                             border: '1px solid #ccc', 
-                            padding: '4px 8px',
+                            padding: '2px',
                             fontSize: '12px'
                           }}
                         >
-                          {cell}
+                          <Input
+                            value={cell}
+                            onChange={(e) => {
+                              const newData = [...content.table.data]
+                              newData[i][j] = e.target.value
+                              updateTable({ ...content.table, data: newData })
+                            }}
+                            size="xs"
+                            border="none"
+                            p={1}
+                            _focus={{ border: '1px solid #3182ce' }}
+                          />
                         </td>
                       ))}
                     </tr>
                   ))}
                 </tbody>
               </Box>
+              <HStack spacing={2} mt={2} wrap="wrap">
+                <Button 
+                  size="xs" 
+                  colorScheme="green" 
+                  variant="outline"
+                  onClick={() => {
+                    const newData = [...content.table.data, Array(content.table.data[0]?.length || 0).fill('')]
+                    updateTable({ ...content.table, data: newData })
+                  }}
+                >
+                  + Řádek
+                </Button>
+                <Button 
+                  size="xs" 
+                  colorScheme="green" 
+                  variant="outline"
+                  onClick={() => {
+                    const newData = content.table.data.map(row => [...row, ''])
+                    updateTable({ ...content.table, data: newData })
+                  }}
+                >
+                  + Sloupec
+                </Button>
+                <Button 
+                  size="xs" 
+                  colorScheme="orange" 
+                  variant="outline"
+                  onClick={() => {
+                    if (content.table.data.length > 1) {
+                      const newData = content.table.data.slice(0, -1)
+                      updateTable({ ...content.table, data: newData })
+                    }
+                  }}
+                >
+                  - Řádek
+                </Button>
+                <Button 
+                  size="xs" 
+                  colorScheme="orange" 
+                  variant="outline"
+                  onClick={() => {
+                    if (content.table.data[0]?.length > 1) {
+                      const newData = content.table.data.map(row => row.slice(0, -1))
+                      updateTable({ ...content.table, data: newData })
+                    }
+                  }}
+                >
+                  - Sloupec
+                </Button>
+                <Button 
+                  size="xs" 
+                  colorScheme="red" 
+                  variant="outline"
+                  onClick={() => updateTable(null)}
+                >
+                  Smazat tabulku
+                </Button>
+              </HStack>
             </Box>
           ) : (
-            <Text fontSize="xs" color="gray.400" fontStyle="italic">
-              Žádná tabulka
-            </Text>
+            <VStack spacing={2} align="stretch">
+              <Text fontSize="xs" color="gray.400" fontStyle="italic">
+                Žádná tabulka
+              </Text>
+              <HStack spacing={2}>
+                <Input
+                  type="number"
+                  placeholder="Řádky"
+                  size="xs"
+                  w={20}
+                  id="table-rows"
+                />
+                <Text fontSize="xs">×</Text>
+                <Input
+                  type="number"
+                  placeholder="Sloupce"
+                  size="xs"
+                  w={20}
+                  id="table-cols"
+                />
+                <Button 
+                  size="xs" 
+                  colorScheme="blue" 
+                  variant="outline"
+                  onClick={() => {
+                    const rows = parseInt((document.getElementById('table-rows') as HTMLInputElement)?.value || '2')
+                    const cols = parseInt((document.getElementById('table-cols') as HTMLInputElement)?.value || '2')
+                    
+                    // Vytvoříme tabulku s prázdnými buňkami
+                    const newTable = {
+                      data: Array(rows).fill(null).map(() => Array(cols).fill(''))
+                    }
+                    updateTable(newTable)
+                  }}
+                >
+                  Vytvořit tabulku
+                </Button>
+              </HStack>
+            </VStack>
           )}
         </Box>
       </VStack>

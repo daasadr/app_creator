@@ -1,6 +1,6 @@
 import type { Block, PageImage, AppPage, BlockStyle } from '../types'
 import React, { useState } from 'react'
-import { VStack, Box, Textarea, Button, HStack, Collapse, useDisclosure, IconButton } from '@chakra-ui/react'
+import { VStack, Box, Textarea, Button, HStack, Collapse, useDisclosure, IconButton, Switch, Text } from '@chakra-ui/react'
 import { ChevronDownIcon, ChevronUpIcon } from '@chakra-ui/icons'
 import TableWidget from './TableWidget'
 import ImageBlock from './ImageBlock'
@@ -134,14 +134,29 @@ function BlockEditor({ value, onChange }: { value: Block[], onChange: (blocks: B
               <Button size="xs" onClick={() => moveBlock(idx, 1)} isDisabled={idx === value.length-1}>↓</Button>
               <Button size="xs" colorScheme="red" onClick={() => removeBlock(idx)}>Smazat</Button>
             </HStack>
-            <IconButton
-              size="xs"
-              icon={editingStyle === idx ? <ChevronUpIcon /> : <ChevronDownIcon />}
-              onClick={() => setEditingStyle(editingStyle === idx ? null : idx)}
-              aria-label="Stylování"
-              colorScheme="blue"
-              variant="outline"
-            />
+            <HStack spacing={2}>
+              {/* Permissions toggle */}
+              <Box display="flex" alignItems="center" bg="gray.50" px={2} py={1} borderRadius="sm">
+                <Text fontSize="xs" mr={1}>🔐</Text>
+                <Switch
+                  size="sm"
+                  isChecked={block.requireAuth || false}
+                  onChange={(e) => {
+                    const newBlocks = value.map((b, i) => i === idx ? { ...b, requireAuth: e.target.checked } : b);
+                    onChange(newBlocks);
+                  }}
+                />
+                <Text fontSize="xs" ml={1}>Auth</Text>
+              </Box>
+              <IconButton
+                size="xs"
+                icon={editingStyle === idx ? <ChevronUpIcon /> : <ChevronDownIcon />}
+                onClick={() => setEditingStyle(editingStyle === idx ? null : idx)}
+                aria-label="Stylování"
+                colorScheme="blue"
+                variant="outline"
+              />
+            </HStack>
           </HStack>
 
           <Collapse in={editingStyle === idx}>

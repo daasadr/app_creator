@@ -2,9 +2,9 @@
 
 import React, { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
-import { doc, getDoc, updateDoc } from 'firebase/firestore'
+import { doc, getDoc, updateDoc, collection, query, where, getDocs } from 'firebase/firestore'
 import { db } from '../../../lib/firebase'
-import { Box, Heading, Spinner, useToast, Tabs, TabList, TabPanels, Tab, TabPanel, Select, FormControl, FormLabel, Input, VStack } from '@chakra-ui/react'
+import { Box, Heading, Spinner, useToast, Tabs, TabList, TabPanels, Tab, TabPanel, Select, FormControl, FormLabel, Input, VStack, Button, Alert, AlertIcon, Collapse, AlertTitle, AlertDescription, Text, Switch, Divider, Badge } from '@chakra-ui/react'
 import AppMenuEditor from '../../../components/AppMenuEditor'
 import PageEditModal from '../../../components/PageEditModal'
 import type { AppPage } from '../../../types'
@@ -17,7 +17,7 @@ export default function AppEditPage() {
   const [appData, setAppData] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [menu, setMenu] = useState<AppPage[]>([])
-  const [pageEdit, setPageEdit] = useState<AppPage & { blocks?: any[] } | null>(null)
+  const [pageEdit, setPageEdit] = useState<AppPage | null>(null)
   const [modalOpen, setModalOpen] = useState(false)
   const [pickerActive, setPickerActive] = useState(false)
   const [previewIdx, setPreviewIdx] = useState(0)
@@ -26,6 +26,21 @@ export default function AppEditPage() {
   const [generateError, setGenerateError] = useState<string | null>(null)
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'error' | null>(null)
   const [saveRetryCount, setSaveRetryCount] = useState(0)
+  const [packageNameHelpOpen, setPackageNameHelpOpen] = useState(false)
+  const [packageNameValidation, setPackageNameValidation] = useState<{
+    isValid: boolean | null
+    error: string | null
+    warning: string | null
+  }>({ isValid: null, error: null, warning: null })
+  
+  // Undo/Redo systém
+  const [history, setHistory] = useState<Array<{
+    menu: AppPage[]
+    appData: any
+    timestamp: number
+  }>>([])
+  const [historyIndex, setHistoryIndex] = useState(-1)
+  const [isUndoRedo, setIsUndoRedo] = useState(false)
 
   // Pomocná funkce pro odstranění všech undefined hodnot rekurzivně
   function removeUndefined(obj: any): any {
@@ -45,11 +60,26 @@ export default function AppEditPage() {
     return menu.map(page => removeUndefined({
       ...page,
       blocks: Array.isArray(page.blocks)
-        ? page.blocks.map(block =>
-            block.type === 'table' && Array.isArray(block.data)
-              ? { ...block, data: JSON.stringify(block.data) }
-              : block
-          )
+        ? page.blocks.map(block => {
+            // Serialize standalone tables
+            if (block.type === 'table' && Array.isArray(block.data)) {
+              return { ...block, data: JSON.stringify(block.data) }
+            }
+            // Serialize tables in mixed blocks
+            if (block.type === 'mixed' && block.content?.table?.data) {
+              return {
+                ...block,
+                content: {
+                  ...block.content,
+                  table: {
+                    ...block.content.table,
+                    data: JSON.stringify(block.content.table.data)
+                  }
+                }
+              }
+            }
+            return block
+          })
         : page.blocks,
     }))
   }
@@ -58,11 +88,26 @@ export default function AppEditPage() {
     return menu.map(page => ({
       ...page,
       blocks: Array.isArray(page.blocks)
-        ? page.blocks.map(block =>
-            block.type === 'table' && typeof block.data === 'string'
-              ? { ...block, data: JSON.parse(block.data) }
-              : block
-          )
+        ? page.blocks.map(block => {
+            // Deserialize standalone tables
+            if (block.type === 'table' && typeof block.data === 'string') {
+              return { ...block, data: JSON.parse(block.data) }
+            }
+            // Deserialize tables in mixed blocks
+            if (block.type === 'mixed' && block.content?.table?.data && typeof block.content.table.data === 'string') {
+              return {
+                ...block,
+                content: {
+                  ...block.content,
+                  table: {
+                    ...block.content.table,
+                    data: JSON.parse(block.content.table.data)
+                  }
+                }
+              }
+            }
+            return block
+          })
         : page.blocks,
     }))
   }
@@ -80,7 +125,7 @@ export default function AppEditPage() {
 
           // MIGRACE: Pokud existuje globální content/images, promítni je do první stránky menu
           if (data.content || data.images) {
-            if (loadedMenu.length === 0) loadedMenu = [{}]
+            if (loadedMenu.length === 0) loadedMenu = [{ title: 'Úvodní stránka', type: 'content' as const }]
             if (data.content && !loadedMenu[0].content) loadedMenu[0].content = data.content
             if (data.images && (!loadedMenu[0].images || loadedMenu[0].images.length === 0)) loadedMenu[0].images = data.images
           }
@@ -95,6 +140,15 @@ export default function AppEditPage() {
 
           setAppData(data)
           setMenu(loadedMenu)
+          
+          // Inicializuj historii s počátečním stavem
+          const initialState = {
+            menu: [...loadedMenu],
+            appData: { ...data },
+            timestamp: Date.now()
+          }
+          setHistory([initialState])
+          setHistoryIndex(0)
         } else {
           toast({ title: 'Aplikace nenalezena', status: 'error' })
         }
@@ -106,6 +160,16 @@ export default function AppEditPage() {
     }
     fetchApp()
   }, [appId])
+
+  // Automatické ukládání do historie při změnách
+  useEffect(() => {
+    if (!loading && appData && menu.length > 0) {
+      const historyTimeout = setTimeout(() => {
+        saveToHistory()
+      }, 1000)
+      return () => clearTimeout(historyTimeout)
+    }
+  }, [menu, appData, appId, loading])
 
   // Automatické ukládání menu a appData do Firestore s retry logikou
   useEffect(() => {
@@ -157,6 +221,138 @@ export default function AppEditPage() {
   // Funkce pro generování unikátního id
   function generateId() {
     return Date.now().toString(36) + Math.random().toString(36).substr(2, 5)
+  }
+
+  // Validace package name
+  const validatePackageName = (packageName: string) => {
+    if (!packageName) {
+      setPackageNameValidation({ isValid: false, error: 'Package name je povinný', warning: null })
+      return
+    }
+
+    // Základní validace formátu
+    const packageNameRegex = /^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*$/
+    if (!packageNameRegex.test(packageName)) {
+      setPackageNameValidation({ 
+        isValid: false, 
+        error: 'Neplatný formát. Použijte malá písmena, číslice a tečky (např. com.example.myapp)', 
+        warning: null 
+      })
+      return
+    }
+
+    // Kontrola délky
+    if (packageName.length < 3) {
+      setPackageNameValidation({ isValid: false, error: 'Package name je příliš krátký', warning: null })
+      return
+    }
+    if (packageName.length > 100) {
+      setPackageNameValidation({ isValid: false, error: 'Package name je příliš dlouhý', warning: null })
+      return
+    }
+
+    // Kontrola zda se jedná o produkční aplikaci (obsahuje vypovídající název)
+    if (!packageName.includes('example') && !packageName.includes('test') && !packageName.includes('demo')) {
+      setPackageNameValidation({ 
+        isValid: true, 
+        error: null, 
+        warning: 'Tento package name vypadá jako produkční. Ujistěte se, že je unikátní!' 
+      })
+    } else {
+      setPackageNameValidation({ isValid: true, error: null, warning: null })
+    }
+  }
+
+  // Kontrola duplicity package name
+  const checkPackageNameDuplicate = async (packageName: string) => {
+    if (!packageName || !appId) return
+    
+    try {
+      // Najdi všechny aplikace s tímto package name (kromě aktuální)
+      const appsQuery = query(
+        collection(db, 'apps'),
+        where('packageName', '==', packageName)
+      )
+      const appsSnapshot = await getDocs(appsQuery)
+      
+      // Filtr pouze aplikace které nejsou aktuální
+      const duplicateApps = appsSnapshot.docs.filter(doc => doc.id !== appId)
+      
+      if (duplicateApps.length > 0) {
+        const appNames = duplicateApps.map(doc => doc.data().name || 'Bez názvu').join(', ')
+        setPackageNameValidation({ 
+          isValid: false, 
+          error: null, 
+          warning: `⚠️ Tento package name již používá aplikace: ${appNames}. Pro produkci použijte unikátní package name!` 
+        })
+      }
+    } catch (error) {
+      console.error('Error checking package name duplicate:', error)
+    }
+  }
+
+  // Undo/Redo funkce
+  const saveToHistory = () => {
+    if (isUndoRedo) return
+    
+    const currentState = {
+      menu: [...menu],
+      appData: appData ? {...appData} : null,
+      timestamp: Date.now()
+    }
+    
+    // Odstraň vše za aktuální pozicí
+    const newHistory = history.slice(0, historyIndex + 1)
+    
+    // Přidej nový stav
+    newHistory.push(currentState)
+    
+    // Omezte historii na 50 stavů
+    if (newHistory.length > 50) {
+      newHistory.shift()
+    } else {
+      setHistoryIndex(prev => prev + 1)
+    }
+    
+    setHistory(newHistory)
+  }
+
+  const undo = () => {
+    if (historyIndex > 0) {
+      setIsUndoRedo(true)
+      const prevState = history[historyIndex - 1]
+      setMenu(prevState.menu)
+      setAppData(prevState.appData)
+      setHistoryIndex(prevState => prevState - 1)
+      
+      toast({
+        title: 'Změna vrácena',
+        description: `Vracem na stav z ${new Date(prevState.timestamp).toLocaleTimeString()}`,
+        status: 'info',
+        duration: 2000
+      })
+      
+      setTimeout(() => setIsUndoRedo(false), 100)
+    }
+  }
+
+  const redo = () => {
+    if (historyIndex < history.length - 1) {
+      setIsUndoRedo(true)
+      const nextState = history[historyIndex + 1]
+      setMenu(nextState.menu)
+      setAppData(nextState.appData)
+      setHistoryIndex(prevState => prevState + 1)
+      
+      toast({
+        title: 'Změna obnovena',
+        description: `Obnovujem na stav z ${new Date(nextState.timestamp).toLocaleTimeString()}`,
+        status: 'info',
+        duration: 2000
+      })
+      
+      setTimeout(() => setIsUndoRedo(false), 100)
+    }
   }
 
   const handleSavePage = async () => {
@@ -315,13 +511,241 @@ export default function AppEditPage() {
               <FormLabel>Package Name (Android)</FormLabel>
               <Input 
                 value={appData.packageName || ''} 
-                onChange={e => setAppData({ ...appData, packageName: e.target.value })}
-                placeholder="com.example.hezka_aplikace"
+                onChange={e => {
+                  setAppData({ ...appData, packageName: e.target.value })
+                  validatePackageName(e.target.value)
+                }}
+                onBlur={() => {
+                  if (appData.packageName) {
+                    validatePackageName(appData.packageName)
+                    checkPackageNameDuplicate(appData.packageName)
+                  }
+                }}
+                placeholder="com.nazev_projektu_nebo_firmy.tady_vas_package_name..."
+                isInvalid={packageNameValidation.error !== null}
               />
+              
+              {/* Help Button */}
+              <Button 
+                size="xs" 
+                variant="link" 
+                colorScheme="blue"
+                onClick={() => setPackageNameHelpOpen(!packageNameHelpOpen)}
+                mt={1}
+              >
+                {packageNameHelpOpen ? 'Skrýt návod' : 'Jak získat Package Name?'}
+              </Button>
+              
+              {/* Expandable Help Section */}
+              <Collapse in={packageNameHelpOpen} animateOpacity>
+                <Box 
+                  bg="blue.50" 
+                  border="1px" 
+                  borderColor="blue.200" 
+                  borderRadius="md" 
+                  p={4} 
+                  mt={2}
+                  fontSize="sm"
+                >
+                  <VStack align="start" spacing={3}>
+                    <Box>
+                      <Text fontWeight="bold" color="blue.700">1️⃣ Najděte Package Name v Google Play Console:</Text>
+                      <Text ml={4}>• Přihlaste se na <Text as="span" color="blue.600">console.developers.google.com</Text></Text>
+                      <Text ml={4}>• Vyberte svůj projekt → Aplikace → Všechny aplikace</Text>
+                      <Text ml={4}>• Najděte aplikaci a klikněte na ni</Text>
+                      <Text ml={4}>• Package Name najdete pod základními informacemi</Text>
+                    </Box>
+                    
+                    <Box>
+                      <Text fontWeight="bold" color="blue.700">2️⃣ Nebo najděte v APK souboru:</Text>
+                      <Text ml={4}>• Použijte APK Analyzer v Android Studio</Text>
+                      <Text ml={4}>• Nebo použijte online nástroj jako APKPure Analyzer</Text>
+                    </Box>
+                    
+                    <Box>
+                      <Text fontWeight="bold" color="blue.700">3️⃣ Pro novou aplikaci:</Text>
+                      <Text ml={4}>• Vytvořte projekt v Firebase Console</Text>
+                      <Text ml={4}>• Přidejte Android aplikaci s vlastním Package Name</Text>
+                      <Text ml={4}>• Formát: com.vase_organizace.nazev_aplikace</Text>
+                    </Box>
+                    
+                    <Alert status="info" size="sm">
+                      <AlertIcon />
+                      <Box>
+                        <AlertDescription>
+                          <Text fontWeight="bold">Bezpečnostní tip:</Text> Pokud používáte existující Package Name, stáhněte si nový google-services.json soubor a nahrajte ho do složky server/google-services/[package-name]/
+                        </AlertDescription>
+                      </Box>
+                    </Alert>
+                  </VStack>
+                </Box>
+              </Collapse>
+
+              {/* Validation Messages */}
+              {packageNameValidation.error && (
+                <Alert status="error" size="sm" mt={2}>
+                  <AlertIcon />
+                  <AlertDescription>{packageNameValidation.error}</AlertDescription>
+                </Alert>
+              )}
+              
+              {packageNameValidation.warning && !packageNameValidation.error && (
+                <Alert status="warning" size="sm" mt={2}>
+                  <AlertIcon />
+                  <AlertDescription>{packageNameValidation.warning}</AlertDescription>
+                </Alert>
+              )}
+
               <Box fontSize="sm" color="gray.600" mt={1}>
                 Jedinečný identifikátor pro Android aplikaci. Použije se pro instalaci a aktualizace.
               </Box>
             </FormControl>
+          </VStack>
+
+          {/* Pokročilá nastavení aplikace */}
+          <VStack spacing={4} align="stretch" mb={6} p={4} bg="gray.50" borderRadius="md">
+            <Heading size="md">Pokročilá nastavení</Heading>
+            
+            {/* Uživatelské účty */}
+            <FormControl display="flex" alignItems="center" justifyContent="space-between">
+              <Box>
+                <FormLabel mb={0}>
+                  Uživatelské účty
+                </FormLabel>
+                <Text fontSize="sm" color="gray.600">
+                  Aplikace bude mít přihlašování registrovaných uživatelů
+                </Text>
+              </Box>
+              <Switch 
+                isChecked={appData?.settings?.userAccounts || false}
+                onChange={e => setAppData({ 
+                  ...appData, 
+                  settings: { 
+                    ...appData?.settings, 
+                    userAccounts: e.target.checked 
+                  }
+                })}
+                colorScheme="blue"
+              />
+            </FormControl>
+
+            {/* Pokud jsou uživatelské účty zapnuté, zobraz dodatečné nastavení */}
+            <Collapse in={appData?.settings?.userAccounts || false} animateOpacity>
+              <Box pl={4} borderLeft="2px" borderColor="blue.200">
+                <FormControl>
+                  <FormLabel fontSize="sm">Možnosti registrace</FormLabel>
+                  <VStack align="start" spacing={2} mt={2}>
+                    <FormControl display="flex" alignItems="center">
+                      <Switch 
+                        isChecked={appData?.settings?.allowEmailRegistration || false}
+                        onChange={e => setAppData({ 
+                          ...appData, 
+                          settings: { 
+                            ...appData?.settings, 
+                            allowEmailRegistration: e.target.checked 
+                          }
+                        })}
+                        colorScheme="green"
+                        size="sm"
+                      />
+                      <Text fontSize="sm" ml={2}>
+                        Registrace emailem a heslem
+                      </Text>
+                    </FormControl>
+                    
+                    <FormControl display="flex" alignItems="center">
+                      <Switch 
+                        isChecked={appData?.settings?.allowSocialLogin || false}
+                        onChange={e => setAppData({ 
+                          ...appData, 
+                          settings: { 
+                            ...appData?.settings, 
+                            allowSocialLogin: e.target.checked 
+                          }
+                        })}
+                        colorScheme="orange"
+                        size="sm"
+                      />
+                      <Text fontSize="sm" ml={2}>
+                        Přihlášení přes Google/Facebook
+                      </Text>
+                    </FormControl>
+                  </VStack>
+                </FormControl>
+
+                <Alert status="info" size="sm" mt={4}>
+                  <AlertIcon />
+                  <AlertDescription fontSize="xs">
+                    <Text fontWeight="bold">Požadavky:</Text> Pro uživatelské účty budete potřebovat vlastní Firebase projekt s povoleným Authentication. Více informací je v dokumentaci.
+                  </AlertDescription>
+                </Alert>
+              </Box>
+            </Collapse>
+
+            <Divider />
+
+            {/* Push Notifikace */}
+            <FormControl display="flex" alignItems="center" justifyContent="space-between">
+              <Box>
+                <FormLabel mb={0}>
+                  Push Notifikace
+                </FormLabel>
+                <Text fontSize="sm" color="gray.600">
+                  Možnost posílat oznámení uživatelům aplikace
+                </Text>
+              </Box>
+              <Switch 
+                isChecked={appData?.settings?.pushNotifications || false}
+                onChange={e => setAppData({ 
+                  ...appData, 
+                  settings: { 
+                    ...appData?.settings, 
+                    pushNotifications: e.target.checked 
+                  }
+                })}
+                colorScheme="purple"
+              />
+            </FormControl>
+
+            {/* Chat System */}
+            <FormControl display="flex" alignItems="center" justifyContent="space-between">
+              <Box>
+                <FormLabel mb={0}>
+                  Chat System
+                </FormLabel>
+                <Text fontSize="sm" color="gray.600">
+                  Uživatelé mohou chatovat a sdílet fotografie
+                </Text>
+              </Box>
+              <Switch 
+                isChecked={appData?.settings?.chatSystem || false}
+                onChange={e => setAppData({ 
+                  ...appData, 
+                  settings: { 
+                    ...appData?.settings, 
+                    chatSystem: e.target.checked 
+                  }
+                })}
+                colorScheme="teal"
+              />
+            </FormControl>
+
+
+            {/* Status badges */}
+            <Box display="flex" gap={2} flexWrap="wrap">
+              {appData?.settings?.userAccounts && (
+                <Badge colorScheme="blue">Uživatelské účty</Badge>
+              )}
+              {appData?.settings?.pushNotifications && (
+                <Badge colorScheme="purple">Push Notifikace</Badge>
+              )}
+              {appData?.settings?.chatSystem && (
+                <Badge colorScheme="teal">Chat System</Badge>
+              )}
+              {!appData?.settings?.userAccounts && !appData?.settings?.pushNotifications && !appData?.settings?.chatSystem && (
+                <Badge colorScheme="gray">Základní nastavení</Badge>
+              )}
+            </Box>
           </VStack>
           
           <AppMenuEditor
@@ -333,18 +757,40 @@ export default function AppEditPage() {
             }}
             onEdit={handleEditPage}
           />
-          <Box mt={4} display="flex" gap={4} alignItems="center">
-            <button onClick={handleSaveApp} disabled={saveStatus === 'saving'}>
+          <Box mt={4} display="flex" gap={4} alignItems="center" flexWrap="wrap">
+            {/* Undo/Redo ovládání */}
+            <Box display="flex" gap={2}>
+              <Button 
+                size="sm" 
+                variant="outline"
+                onClick={undo}
+                disabled={historyIndex <= 0}
+                title={historyIndex > 0 ? `Undo: vrať se na stav z ${new Date(history[historyIndex - 1]?.timestamp).toLocaleString()}` : 'Nelze vrátit'}
+              >
+                ↶ Undo
+              </Button>
+              <Button 
+                size="sm" 
+                variant="outline"
+                onClick={redo}
+                disabled={historyIndex >= history.length - 1}
+                title={historyIndex < history.length - 1 ? `Redo: pokračuj na stav z ${new Date(history[historyIndex + 1]?.timestamp).toLocaleString()}` : 'Nelze pokračovat'}
+              >
+                ↷ Redo
+              </Button>
+            </Box>
+            
+            <Button onClick={handleSaveApp} disabled={saveStatus === 'saving'} colorScheme="blue">
               {saveStatus === 'saved' ? 'Změny uloženy' : 'Uložit změny'}
-            </button>
-            <button 
+            </Button>
+            <Button 
               onClick={handleGenerate} 
               disabled={generating || saveStatus === 'error' || saveStatus === null} 
-              style={{ minWidth: 120 }}
+              colorScheme="green"
               title={saveStatus === 'error' || saveStatus === null ? 'Nejprve uložte změny' : 'Generovat APK'}
             >
               {generating ? 'Generuji...' : 'Generovat APK'}
-            </button>
+            </Button>
             {downloadUrl && (
               <a href={downloadUrl} target="_blank" rel="noopener noreferrer" style={{ marginLeft: 16, color: 'green' }}>
                 Stáhnout APK

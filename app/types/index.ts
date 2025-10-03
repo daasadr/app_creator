@@ -14,6 +14,10 @@ export interface BlockStyle {
   boxShadow?: string;
   autoProportions?: boolean;
   plasticEffect?: boolean;
+  // Pokročilé border možnosti
+  showOuterBorder?: boolean; // Zobrazit vnější border
+  showInnerBorder?: boolean; // Zobrazit vnitřní ohraničení buněk
+  borderType?: 'all' | 'outer' | 'inner' | 'none'; // Typ ohraničení
 }
 
 // Typ pro kombinované bloky
@@ -37,11 +41,11 @@ export interface MixedBlockContent {
 
 // Typ pro bloky v editoru
 export type Block =
-  | { type: 'text', content: string, style?: BlockStyle }
-  | { type: 'table', data: string[][], style?: BlockStyle }
-  | { type: 'image', url: string, alt?: string, align?: 'left'|'center'|'right'|'full', width?: number, style?: BlockStyle }
-  | { type: 'button', text: string, url?: string, action?: string, style?: BlockStyle }
-  | { type: 'mixed', content: MixedBlockContent, style?: BlockStyle }
+  | { type: 'text', content: string, style?: BlockStyle, requireAuth?: boolean }
+  | { type: 'table', data: string[][], style?: BlockStyle, requireAuth?: boolean }
+  | { type: 'image', url: string, alt?: string, align?: 'left'|'center'|'right'|'full', width?: number, style?: BlockStyle, requireAuth?: boolean }
+  | { type: 'button', text: string, url?: string, action?: string, style?: BlockStyle, requireAuth?: boolean }
+  | { type: 'mixed', content: MixedBlockContent, style?: BlockStyle, requireAuth?: boolean }
 
 // Typ pro obrázek stránky
 export interface PageImage {
@@ -56,7 +60,7 @@ export interface PageImage {
 export interface AppPage {
   id?: string;
   title: string;
-  type: 'content' | 'webview';
+  type: 'content' | 'webview' | 'login' | 'register';
   url?: string;
   content?: string;
   richContent?: string;
@@ -66,6 +70,21 @@ export interface AppPage {
   // Offline obsah pro webview stránky
   offlineContent?: string;
   offlineTitle?: string;
+  // Bloky obsahu pro rich editing
+  blocks?: Block[];
+  // Pouze pro přihlášené uživatele
+  requireAuth?: boolean;
+}
+
+// Nastavení aplikace
+export interface AppSettings {
+  theme?: string;
+  primaryColor?: string;
+  userAccounts?: boolean;
+  allowEmailRegistration?: boolean;
+  allowSocialLogin?: boolean;
+  pushNotifications?: boolean;
+  chatSystem?: boolean;
 }
 
 // Typ pro aplikaci
@@ -75,7 +94,7 @@ export interface App {
   description?: string;
   packageName?: string;
   menu?: AppPage[];
-  settings?: any;
+  settings?: AppSettings;
   createdAt?: string;
   lastUpdated?: string;
 }

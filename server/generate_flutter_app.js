@@ -159,6 +159,14 @@ async function updateAppContent(buildDir, config) {
       }));
     }
     
+    // Speciální zpracování pro login/register stránky
+    if (processedPage.type === 'login' || processedPage.type === 'register') {
+      console.log(`  This is a ${processedPage.type} page - will be handled specially`);
+      // Login/register stránky mají speciální zpracování v Flutter aplikaci
+      processedPage.isAuthPage = true;
+      processedPage.authType = processedPage.type;
+    }
+    
     console.log(`  Final images count:`, processedPage.images ? processedPage.images.length : 'none');
     console.log(`  Final imageUrl:`, processedPage.imageUrl || 'none');
     console.log(`  Offline content:`, processedPage.offlineContent ? 'present' : 'missing');

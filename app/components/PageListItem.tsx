@@ -16,11 +16,18 @@ const PageListItem: React.FC<PageListItemProps> = ({
   return (
     <Box p={2} borderWidth={1} borderRadius="md" bg="gray.50">
       <HStack>
-        <Input value={page.title} onChange={e => onChange(idx, 'title', e.target.value)} placeholder="Název stránky" />
-        <Select value={page.type} onChange={e => onChange(idx, 'type', e.target.value as any)} w="120px">
+          <Input value={page.title} onChange={e => onChange(idx, 'title', e.target.value)} placeholder="Název stránky" />
+        <Select value={page.type} onChange={e => onChange(idx, 'type', e.target.value as any)} w="140px">
           <option value="content">Content</option>
           <option value="webview">WebView</option>
+          <option value="login">Login</option>
+          <option value="register">Register</option>
         </Select>
+        {(page.type === 'content' || page.type === 'webview') && page.requireAuth && (
+          <Box px={2} py={1} bg="yellow.100" borderRadius="sm" border="1px solid" borderColor="yellow.300">
+            <Text fontSize="xs" color="yellow.800" fontWeight="bold">🔐 Auth</Text>
+          </Box>
+        )}
         <IconButton aria-label="Upravit" icon={<span>✏️</span>} onClick={() => onEdit(idx)} />
         <IconButton aria-label="Nahoru" icon={<span>↑</span>} isDisabled={isFirst} onClick={() => onMoveUp(idx)} />
         <IconButton aria-label="Dolů" icon={<span>↓</span>} isDisabled={isLast} onClick={() => onMoveDown(idx)} />
@@ -71,6 +78,16 @@ const PageListItem: React.FC<PageListItemProps> = ({
           {page.offlineTitle && (
             <Text color="green.600" fontSize="sm">✓ Offline nadpis: {page.offlineTitle}</Text>
           )}
+        </Box>
+      )}
+      {(page.type === 'login' || page.type === 'register') && (
+        <Box mt={2} p={2} bg="blue.50" borderRadius="md" border="1px solid" borderColor="blue.200">
+          <Text color="blue.600" fontSize="sm" fontWeight="bold">
+            🔐 {page.type === 'login' ? 'Přihlašovací' : 'Registrační'} {page.type === 'login' ? 'stránka' : 'stránka'}
+          </Text>
+          <Text color="blue.500" fontSize="sm">
+            Tato stránka bude použita pro {page.type === 'login' ? 'přihlášení' : 'registraci'} uživatelů aplikace
+          </Text>
         </Box>
       )}
     </Box>

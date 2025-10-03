@@ -52,7 +52,11 @@ const BlockStyleEditor: React.FC<BlockStyleEditorProps> = ({ style, onChange, on
     textAlign: 'left',
     boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)',
     autoProportions: false,
-    plasticEffect: false
+    plasticEffect: false,
+    // Pokročilé border možnosti
+    showOuterBorder: true,
+    showInnerBorder: true,
+    borderType: 'all'
   })
 
   const applyAutoProportions = () => {
@@ -250,6 +254,45 @@ const BlockStyleEditor: React.FC<BlockStyleEditorProps> = ({ style, onChange, on
               </HStack>
             </FormControl>
           </HStack>
+
+          {/* Pokročilé border možnosti */}
+          <VStack spacing={2} align="stretch">
+            <Text fontWeight="semibold" fontSize="sm">Pokročilé ohraničení</Text>
+            
+            <FormControl>
+              <FormLabel fontSize="sm">Typ ohraničení</FormLabel>
+              <Select
+                value={style.borderType || 'all'}
+                onChange={(e) => updateStyle({ borderType: e.target.value as any })}
+                size="sm"
+              >
+                <option value="all">Všechny hranice</option>
+                <option value="outer">Pouze vnější</option>
+                <option value="inner">Pouze vnitřní</option>
+                <option value="none">Bez ohraničení</option>
+              </Select>
+            </FormControl>
+
+            <HStack>
+              <FormControl flex="1">
+                <FormLabel fontSize="sm">Vnější border</FormLabel>
+                <Switch
+                  isChecked={style.showOuterBorder !== false}
+                  onChange={(e) => updateStyle({ showOuterBorder: e.target.checked })}
+                  size="sm"
+                />
+              </FormControl>
+
+              <FormControl flex="1">
+                <FormLabel fontSize="sm">Vnitřní ohraničení</FormLabel>
+                <Switch
+                  isChecked={style.showInnerBorder !== false}
+                  onChange={(e) => updateStyle({ showInnerBorder: e.target.checked })}
+                  size="sm"
+                />
+              </FormControl>
+            </HStack>
+          </VStack>
         </VStack>
 
         <Divider />

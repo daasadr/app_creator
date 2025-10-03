@@ -1,6 +1,6 @@
 import React from 'react';
 import {
-  Modal, ModalOverlay, ModalContent, ModalHeader, ModalCloseButton, ModalBody, Button, Box, Flex, FormControl, FormLabel, Input, Select, Textarea, Heading, VStack, HStack, Text
+  Modal, ModalOverlay, ModalContent, ModalHeader, ModalCloseButton, ModalBody, Button, Box, Flex, FormControl, FormLabel, Input, Select, Textarea, Heading, VStack, HStack, Text, Alert, AlertIcon, AlertTitle, AlertDescription, Switch
 } from '@chakra-ui/react';
 import ImageManager from './ImageManager';
 import BlockEditor from './BlockEditor';
@@ -43,8 +43,23 @@ const PageEditModal: React.FC<PageEditModalProps> = ({
                 <Select value={pageEdit.type || 'content'} onChange={e => setPageEdit({ ...pageEdit, type: e.target.value as any })}>
                   <option value="content">Content</option>
                   <option value="webview">WebView</option>
+                  <option value="login">Login</option>
+                  <option value="register">Register</option>
                 </Select>
               </FormControl>
+              
+              {/* Pouze pro přihlášené uživatele - pouze pokud nejsou login/register */}
+              {(pageEdit.type === 'content' || pageEdit.type === 'webview') && (
+                <FormControl display="flex" alignItems="center">
+                  <FormLabel mb="0" mr="auto">Pouze pro přihlášené uživatele</FormLabel>
+                  <Switch
+                    isChecked={pageEdit.requireAuth || false}
+                    onChange={(e) => setPageEdit({ ...pageEdit, requireAuth: e.target.checked })}
+                    size="lg"
+                  />
+                </FormControl>
+              )}
+              
               {pageEdit.type === 'content' && (
                 <>
                   <FormControl>
@@ -140,6 +155,57 @@ const PageEditModal: React.FC<PageEditModalProps> = ({
                       </Text>
                     </Box>
                   )}
+                </>
+              )}
+              {(pageEdit.type === 'login' || pageEdit.type === 'register') && (
+                <>
+                  <Box p={4} bg="blue.50" borderRadius="md" border="1px solid" borderColor="blue.200">
+                    <Text color="blue.600" fontWeight="bold" mb={2}>
+                      🔐 {pageEdit.type === 'login' ? 'Přihlašovací' : 'Registrační'} stránka
+                    </Text>
+                    <Text color="blue.500" fontSize="sm" mb={3}>
+                      Tato stránka bude automaticky použita pro {pageEdit.type === 'login' ? 'přihlášení' : 'registraci'} uživatelů aplikace.
+                      Uživatelé budou přesměrováni na tuto stránku pouze pokud jsou uživatelské účty zapnuty v nastavení aplikace.
+                    </Text>
+                    
+                    <Alert status="info" borderRadius="md">
+                      <AlertIcon />
+                      <Box>
+                        <AlertTitle fontSize="sm">
+                          {pageEdit.type === 'login' ? 'Přihlašovací stránka' : 'Registrační stránka'}
+                        </AlertTitle>
+                        <AlertDescription fontSize="sm">
+                          Admin může tuto stránku libovolně přesouvat v menu a nastavit jako homepage.
+                          Stránka je automaticky konfigurovaná pro správné funkce přihlášení/registrace.
+                        </AlertDescription>
+                      </Box>
+                    </Alert>
+                  </Box>
+                  
+                  {/* Obsah pro login/register stránky */}
+                  <FormControl>
+                    <FormLabel>Obrázky stránky</FormLabel>
+                    <ImageManager 
+                      images={pageEdit.images || []} 
+                      onChange={(images) => setPageEdit({ ...pageEdit, images })}
+                      onInsert={handleInsertImage}
+                    />
+                  </FormControl>
+                  <FormControl>
+                    <FormLabel>Obsah stránky (Doporučeno pro návodné texty)</FormLabel>
+                    <BlockEditor 
+                      value={pageEdit.blocks || [{type:'text',content:''}]} 
+                      onChange={(blocks) => setPageEdit({ ...pageEdit, blocks })}
+                    />
+                  </FormControl>
+                  <FormControl>
+                    <FormLabel>Základní obsah (pro kompatibilitu)</FormLabel>
+                    <Textarea 
+                      value={pageEdit.content || ''} 
+                      onChange={e => setPageEdit({ ...pageEdit, content: e.target.value })}
+                      placeholder="Základní text obsah (například uvítání)"
+                    />
+                  </FormControl>
                 </>
               )}
             </Box>

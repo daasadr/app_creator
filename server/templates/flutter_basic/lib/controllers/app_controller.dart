@@ -10,11 +10,13 @@ class AppController extends ChangeNotifier {
   String? _error;
   FirebaseFirestore? _firestore;
   String? _appId; // ID aplikace pro načítání z Firestore
-  bool _isOnline = false; // Stav připojení k internetu (default offline pro testování)
+  bool _isOnline =
+      false; // Stav připojení k internetu (default offline pro testování)
 
   bool get isLoading => _isLoading;
   String? get error => _error;
   bool get isOnline => _isOnline;
+  String? get appId => _appId;
 
   // App content - loaded from Firestore or assets
   List<Map<String, dynamic>> _pages = [];
@@ -51,22 +53,35 @@ class AppController extends ChangeNotifier {
       final config = json.decode(configString);
       final appId = config['appId'];
       print('Loading app content for appId: $appId');
-      bool loadedFromFirestore = false;
-      
+
+      // 2. Nejdřív načti data z assetů jako základ
+      print('Loading from assets as primary source...');
+      _pages = List<Map<String, dynamic>>.from(config['pages'] ?? []);
+      _appSettings = Map<String, dynamic>.from(config['settings'] ?? {});
+      notifyListeners();
+      print('Data loaded from assets: ${_pages.length} pages');
+
+      // 3. Pak zkus načíst aktualizovaná data z Firestore (pokud je připojení)
       if (appId != null) {
         try {
-          print('Attempting to load from Firestore...');
-          final doc = await FirebaseFirestore.instance.collection('apps').doc(appId).get();
+          print('Attempting to load updated data from Firestore...');
+          final doc = await FirebaseFirestore.instance
+              .collection('apps')
+              .doc(appId)
+              .get();
           if (doc.exists) {
             final data = doc.data();
             print('Firestore data loaded successfully');
             print('Menu data: ${data?['menu']?.length ?? 0} pages');
-            _pages = List<Map<String, dynamic>>.from(data?['menu'] ?? []);
-            _appSettings = Map<String, dynamic>.from(data?['settings'] ?? {});
-            loadedFromFirestore = true;
-            notifyListeners();
-            print('Data loaded from Firestore: ${_pages.length} pages');
-            
+
+            // Aktualizuj data z Firestore, ale zachovej assets jako fallback
+            if (data?['menu'] != null && (data?['menu'] as List).isNotEmpty) {
+              _pages = List<Map<String, dynamic>>.from(data?['menu'] ?? []);
+              _appSettings = Map<String, dynamic>.from(data?['settings'] ?? {});
+              notifyListeners();
+              print('Data updated from Firestore: ${_pages.length} pages');
+            }
+
             // Debug: vypiš obsah každé stránky
             for (int i = 0; i < _pages.length; i++) {
               final page = _pages[i];
@@ -94,19 +109,11 @@ class AppController extends ChangeNotifier {
           }
         } catch (e) {
           print('Firestore load error: $e');
+          print('Continuing with assets data...');
         }
       }
-      
-      // 2. Pokud Firestore selže, načti z assetů
-      if (!loadedFromFirestore) {
-        print('Loading from assets as fallback...');
-        _pages = List<Map<String, dynamic>>.from(config['pages'] ?? []);
-        _appSettings = Map<String, dynamic>.from(config['settings'] ?? {});
-        notifyListeners();
-        print('Data loaded from assets: ${_pages.length} pages');
-      }
-      
-      // 3. Vymaž lokální cache, aby se nepoužívala stará data
+
+      // 4. Vymaž lokální cache, aby se nepoužívala stará data
       try {
         final prefs = await SharedPreferences.getInstance();
         await prefs.remove('app_pages');
@@ -115,7 +122,6 @@ class AppController extends ChangeNotifier {
       } catch (e) {
         print('Error clearing cache: $e');
       }
-      
     } catch (e) {
       _setError('Failed to load app content: $e');
       print('Error in loadAppContent: $e');
@@ -210,26 +216,30 @@ class AppController extends ChangeNotifier {
     try {
       // Zkontroluj aktuální stav
       final connectivityResults = await Connectivity().checkConnectivity();
-      _isOnline = connectivityResults.any((result) => result != ConnectivityResult.none);
-      
+      _isOnline = connectivityResults
+          .any((result) => result != ConnectivityResult.none);
+
       // Sleduj změny connectivity
-      Connectivity().onConnectivityChanged.listen((List<ConnectivityResult> results) {
+      Connectivity()
+          .onConnectivityChanged
+          .listen((List<ConnectivityResult> results) {
         final wasOnline = _isOnline;
         _isOnline = results.any((result) => result != ConnectivityResult.none);
-        
+
         if (wasOnline != _isOnline) {
           print('Connectivity changed: ${_isOnline ? "Online" : "Offline"}');
           notifyListeners();
         }
       });
-      
-      print('Connectivity monitoring initialized: ${_isOnline ? "Online" : "Offline"}');
+
+      print(
+          'Connectivity monitoring initialized: ${_isOnline ? "Online" : "Offline"}');
     } catch (e) {
       print('Connectivity initialization failed: $e');
       _isOnline = true; // Default to online if we can't detect
     }
   }
-  
+
   // Metoda pro manuální přepnutí offline režimu (pro testování)
   void setOfflineMode(bool offline) {
     _isOnline = !offline;

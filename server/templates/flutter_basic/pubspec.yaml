@@ -20,6 +20,7 @@ dependencies:
   webview_flutter: ^4.7.0
   connectivity_plus: ^6.0.5
   cached_network_image: ^3.4.1
+  crypto: ^3.0.3
 
 dev_dependencies:
   flutter_test:
